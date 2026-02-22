@@ -162,48 +162,110 @@ Wait for human confirmation before proceeding.
 - `[x]` — completed
 - `[!]` — blocked (Worker reported a blocker, needs attention)
 
+## plan.md Format
+
+```markdown
+# Project: {title}
+
+**ID**: {project-id}
+**Status**: planning | active | completed
+**Room**: {room-id}
+**Created**: {ISO date}
+**Confirmed**: {ISO date or "pending"}
+
+## Team
+
+- @manager:{domain} — Project Manager
+- @{worker1}:{domain} — {role description}
+- @{worker2}:{domain} — {role description}
+
+## Task Plan
+
+### Phase 1: {phase name}
+
+- [ ] {task-id} — {task title} (assigned: @{worker}:{domain})
+  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+
+### Phase 2: {phase name}
+
+- [ ] {task-id} — {task title} (assigned: @{worker}:{domain}, depends on: {task-id})
+  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+  - **On REVISION_NEEDED**: return to {task-id} | reassign to @{worker}
+
+## Change Log
+
+- {ISO datetime}: Project initiated
+- {ISO datetime}: Plan confirmed by human
+```
+
+**Task status markers:**
+- `[ ]` — pending (not yet started)
+- `[~]` — in-progress (task assigned, Worker is working)
+- `[x]` — completed
+- `[!]` — blocked (Worker reported a blocker, needs attention)
+- `[→]` — revision in progress (task triggered a revision)
+
 **task-id** follows the same format as regular tasks: `task-YYYYMMDD-HHMMSS`
 
----
+**On REVISION_NEEDED directive (optional):**
 
-## Step 2: Assign a Task
+For tasks that may require rework (e.g., reviews, QA, approvals), specify what happens when the task reports `REVISION_NEEDED`:
 
-When starting a task (either first assignment or after a dependency completes):
+| Directive | Meaning |
+|-----------|---------|
+| `return to {task-id}` | Create a revision task assigned to the original task's assignee |
+| `reassign to @{worker}` | Create a revision task assigned to a specific worker |
 
-### 2a. Create task files
+Example:
+```markdown
+### Phase 2: Review
 
-```bash
-TASK_ID="task-$(date +%Y%m%d-%H%M%S)"
-mkdir -p ~/hiclaw-fs/shared/tasks/${TASK_ID}
+- [ ] task-002 — Code Review (assigned: @bob, depends on: task-001)
+  - **On REVISION_NEEDED**: return to task-001
+```
 
-cat > ~/hiclaw-fs/shared/tasks/${TASK_ID}/meta.json << 'EOF'
-{
-  "task_id": "<task-id>",
-  "project_id": "<project-id>",
-  "task_title": "<task title>",
-  "assigned_to": "<worker-name>",
-  "room_id": "<project-room-id>",
-  "status": "assigned",
-  "depends_on": [],
-  "assigned_at": "<ISO-8601>",
-  "completed_at": null
-}
-EOF
+This means: if Bob's review finds issues, Manager will create a revision task for Alice (task-001's assignee).
 
-cat > ~/hiclaw-fs/shared/tasks/${TASK_ID}/spec.md << 'EOF'
-# Task: <title>
+## result.md Standard Format
 
-**Task ID**: <task-id>
-**Project**: <project-title> (<project-id>)
-**Assigned to**: <worker-name>
+All Workers should use this format when writing task results:
 
-## Objective
+```markdown
+# Task Result: {title}
 
-<clear description of what needs to be done>
+**Task ID**: {task-id}
+**Completed**: {ISO datetime}
+
+## Outcome
+
+**Status**: SUCCESS | SUCCESS_WITH_NOTES | REVISION_NEEDED | BLOCKED
+
+## Summary
+
+{Brief summary of what was done}
 
 ## Deliverables
 
-<list of expected outputs>
+{List of completed deliverables}
+
+## Notes
+
+{Any notes, issues, or suggestions}
+```
+
+**Outcome values:**
+
+| Status | When to use |
+|--------|-------------|
+| `SUCCESS` | Task fully completed, no issues |
+| `SUCCESS_WITH_NOTES` | Completed but with suggestions for future improvement |
+| `REVISION_NEEDED` | Issues found that require rework of earlier tasks |
+| `BLOCKED` | Cannot complete due to missing dependency or external blocker |
+
+---
+
 
 ## Context
 
@@ -255,14 +317,150 @@ Send a message in the **project room** @mentioning the Worker:
 
 When a Worker @mentions you with a task completion in the project room:
 
-### 3a. Acknowledge and update task
+### 3a. Parse task outcome
+
+**First, read the task's `result.md` file** and extract the outcome:
+
+```bash
+RESULT_FILE="~/hiclaw-fs/shared/tasks/${TASK_ID}/result.md"
+
+# Look for the Outcome section
+if grep -q "Status:.*REVISION_NEEDED" "$RESULT_FILE" 2>/dev/null; then
+  OUTCOME="REVISION_NEEDED"
+elif grep -q "Status:.*BLOCKED" "$RESULT_FILE" 2>/dev/null; then
+  OUTCOME="BLOCKED"
+elif grep -q "Status:.*SUCCESS_WITH_NOTES" "$RESULT_FILE" 2>/dev/null; then
+  OUTCOME="SUCCESS_WITH_NOTES"
+else
+  OUTCOME="SUCCESS"
+fi
+```
+
+**Standard outcome values:**
+
+| Outcome | Meaning | Action |
+|---------|---------|--------|
+| `SUCCESS` | Task completed successfully | Proceed to next task |
+| `SUCCESS_WITH_NOTES` | Completed with notes/suggestions | Proceed, but note the suggestions |
+| `REVISION_NEEDED` | Work needs revision/fixes | Trigger revision workflow |
+| `BLOCKED` | Cannot proceed due to blocker | Handle blocker |
+
+### 3b. If outcome is REVISION_NEEDED - Trigger Revision
+
+When a task reports `REVISION_NEEDED`:
+
+1. **Find the revision target** - Look in plan.md for `On REVISION_NEEDED:` directive:
+
+```bash
+# Parse plan.md to find the revision target for this task
+# Example line in plan.md:
+#   - [x] task-002 — Review (assigned: @bob)
+#     **On REVISION_NEEDED**: return to task-001
+```
+
+2. **Identify who should do the revision**:
+   - If `On REVISION_NEEDED: return to {task-id}` → Find the assignee of that task
+   - If `On REVISION_NEEDED: reassign to {worker}` → Use specified worker
+
+3. **Create a revision task**:
+
+```bash
+REVISION_TASK_ID="task-$(date +%Y%m%d-%H%M%S)"
+ORIGINAL_TASK_ID="<task-reporting-revision>"
+TARGET_TASK_ID="<task-to-revise>"
+REVISION_AUTHOR="<worker-who-will-revise>"
+
+mkdir -p ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}
+
+cat > ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/meta.json << EOF
+{
+  "task_id": "${REVISION_TASK_ID}",
+  "project_id": "<project-id>",
+  "task_title": "Revision based on ${ORIGINAL_TASK_ID}",
+  "assigned_to": "${REVISION_AUTHOR}",
+  "room_id": "<project-room-id>",
+  "status": "assigned",
+  "depends_on": ["${ORIGINAL_TASK_ID}"],
+  "is_revision_for": "${TARGET_TASK_ID}",
+  "triggered_by": "${ORIGINAL_TASK_ID}",
+  "assigned_at": "$(date -Iseconds)"
+}
+EOF
+```
+
+4. **Create spec.md** referencing what needs revision:
+
+```bash
+cat > ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/spec.md << EOF
+# Task: Revision Required
+
+**Task ID**: ${REVISION_TASK_ID}
+**Project**: <project-title>
+**Assigned to**: ${REVISION_AUTHOR}
+**Type**: Revision
+
+## Context
+
+Task ${ORIGINAL_TASK_ID} has identified issues that require revision of earlier work.
+
+**Review/Feedback source**: ~/hiclaw-fs/shared/tasks/${ORIGINAL_TASK_ID}/result.md
+
+## What Needs Revision
+
+<Extract the "Notes" or "Issues" section from the result.md of the triggering task>
+
+## Original Task Reference
+
+Original task: ${TARGET_TASK_ID}
+Spec: ~/hiclaw-fs/shared/tasks/${TARGET_TASK_ID}/spec.md
+
+## Deliverables
+
+Address all issues identified in the review/feedback, then:
+1. Update the deliverables from the original task
+2. Write result.md for this revision task
+3. @mention Manager when complete
+EOF
+```
+
+5. **Update plan.md** to add the revision task:
+
+```markdown
+### Phase N: {Phase Name}
+
+- [x] task-xxx — Original task
+- [x] task-yyy — Review task (reported REVISION_NEEDED)
+- [ ] task-zzz — Revision (assigned: @worker, revision for: task-xxx)
+```
+
+6. **@mention the worker** in project room:
+
+```
+@{worker}:{domain} 任务 {ORIGINAL_TASK_ID} 反馈需要修改。
+
+**任务**: {REVISION_TASK_ID} — 根据反馈进行修改
+
+**反馈来源**: ~/hiclaw-fs/shared/tasks/${ORIGINAL_TASK_ID}/result.md
+
+请先运行 hiclaw-sync，阅读修改要求，完成后 @mention 我汇报。
+```
+
+7. **Do NOT proceed to next phase** until revision is complete.
+
+### 3c. If outcome is BLOCKED
+
+Handle as described in Step 4 (Handle Blocked Tasks).
+
+### 3d. If outcome is SUCCESS or SUCCESS_WITH_NOTES
 
 1. Update `shared/tasks/{task-id}/meta.json`: `status → completed`, fill `completed_at`
-2. Sync: `mc cp ... meta.json hiclaw/...`
+2. Sync to MinIO
 3. Update `plan.md`: change `[~]` to `[x]` for the completed task
 4. Add entry to plan.md Change Log
+5. If `SUCCESS_WITH_NOTES`, record the notes for reference
+6. Proceed to find next tasks (Step 3e)
 
-### 3b. Find next tasks
+### 3e. Find next tasks
 
 Read plan.md and find:
 - Any `[ ]` tasks whose dependencies are now all `[x]`
@@ -270,11 +468,11 @@ Read plan.md and find:
 
 For each newly unblocked task, go to Step 2 to assign it.
 
-### 3c. If Worker has another task in plan.md
+### 3f. If Worker has another task in plan.md
 
 Assign the next task to the same Worker immediately (Step 2). The Worker is available and context-fresh.
 
-### 3d. If all tasks are complete
+### 3g. If all tasks are complete
 
 1. Update meta.json: `status → completed`
 2. Update plan.md Status to "completed"
