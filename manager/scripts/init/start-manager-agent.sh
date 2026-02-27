@@ -288,6 +288,34 @@ else
 fi
 
 # ============================================================
+# Recreate missing Worker containers
+# After Manager restart, its IP may change. Workers use ExtraHosts
+# pointing to Manager IP, so they must be recreated.
+# ============================================================
+if container_api_available; then
+    REGISTRY_FILE="${HOME}/manager-workspace/workers-registry.json"
+    if [ -f "${REGISTRY_FILE}" ]; then
+        for _worker_name in $(jq -r '.workers | keys[]' "${REGISTRY_FILE}" 2>/dev/null); do
+            [ -z "${_worker_name}" ] && continue
+            _container_name="${WORKER_CONTAINER_PREFIX}${_worker_name}"
+            # Check if the worker container exists (running or stopped)
+            if ! _api GET "/containers/${_container_name}/json" > /dev/null 2>&1; then
+                log "Worker container missing: ${_worker_name}, recreating..."
+                _creds_file="/data/worker-creds/${_worker_name}.env"
+                if [ -f "${_creds_file}" ]; then
+                    source "${_creds_file}"
+                    container_create_worker "${_worker_name}" "${_worker_name}" "${WORKER_MINIO_PASSWORD}" 2>&1 \
+                        && log "  Recreated worker: ${_worker_name}" \
+                        || log "  WARNING: Failed to recreate worker: ${_worker_name}"
+                else
+                    log "  WARNING: No credentials found for ${_worker_name}, skipping"
+                fi
+            fi
+        done
+    fi
+fi
+
+# ============================================================
 # Notify workers of builtin updates if upgrade happened
 # Builtin files (AGENTS.md, skills) are already synced by upgrade-builtins.sh
 # ============================================================

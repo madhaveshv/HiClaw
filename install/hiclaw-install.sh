@@ -388,36 +388,13 @@ install_manager() {
             1|upgrade)
                 log "Performing in-place upgrade..."
                 
-                # Ask about rebuilding workers (only if there are existing workers)
-                if [ -n "${existing_workers}" ]; then
-                    if [ "${HICLAW_NON_INTERACTIVE}" != "1" ]; then
-                        echo ""
-                        echo -e "\033[36mWorker containers found: $(echo ${existing_workers} | tr '\n' ' ')\033[0m"
-                        echo ""
-                        echo -e "\033[33mRebuild worker containers?\033[0m"
-                        echo -e "\033[33m  - Only needed if the worker IMAGE has changed (e.g., OpenClaw version upgrade)\033[0m"
-                        echo -e "\033[33m  - NOT needed if only Manager files changed (Manager will auto-push updates to workers)\033[0m"
-                        echo ""
-                        read -p "Rebuild workers? [y/N]: " REBUILD_WORKERS
-                        REBUILD_WORKERS="${REBUILD_WORKERS:-n}"
-                    else
-                        REBUILD_WORKERS="no"
-                    fi
-                fi
-                
                 # Warn about running containers
-                if [ -n "${running_manager}" ]; then
+                if [ -n "${running_manager}" ] || [ -n "${running_workers}" ]; then
                     echo ""
                     echo -e "\033[33m⚠️  Manager container will be stopped and recreated.\033[0m"
-                fi
-                
-                if [ "${REBUILD_WORKERS}" = "y" ] || [ "${REBUILD_WORKERS}" = "Y" ]; then
-                    if [ -n "${running_workers}" ]; then
-                        echo -e "\033[33m⚠️  All worker containers will be stopped and recreated.\033[0m"
+                    if [ -n "${existing_workers}" ]; then
+                        echo -e "\033[33m⚠️  Worker containers will also be recreated (to update Manager IP in hosts).\033[0m"
                     fi
-                fi
-                
-                if [ -n "${running_manager}" ] || [ "${REBUILD_WORKERS}" = "y" ] || [ "${REBUILD_WORKERS}" = "Y" ]; then
                     if [ "${HICLAW_NON_INTERACTIVE}" != "1" ]; then
                         echo ""
                         read -p "Continue? [y/N]: " CONFIRM_STOP
@@ -427,24 +404,23 @@ install_manager() {
                         fi
                     fi
                 fi
-                
+
                 # Stop and remove manager container
                 if [ -n "${running_manager}" ] || docker ps -a --format '{{.Names}}' | grep -q "^hiclaw-manager$"; then
                     log "Stopping and removing existing manager container..."
                     docker stop hiclaw-manager 2>/dev/null || true
                     docker rm hiclaw-manager 2>/dev/null || true
                 fi
-                
-                # Stop and remove worker containers only if user chose to rebuild
-                if [ "${REBUILD_WORKERS}" = "y" ] || [ "${REBUILD_WORKERS}" = "Y" ]; then
-                    if [ -n "${existing_workers}" ]; then
-                        log "Stopping and removing existing worker containers..."
-                        for w in ${existing_workers}; do
-                            docker stop "${w}" 2>/dev/null || true
-                            docker rm "${w}" 2>/dev/null || true
-                            log "  Removed: ${w}"
-                        done
-                    fi
+
+                # Stop and remove worker containers (Manager IP changes on restart,
+                # so workers must be recreated to get updated /etc/hosts entries)
+                if [ -n "${existing_workers}" ]; then
+                    log "Stopping and removing existing worker containers..."
+                    for w in ${existing_workers}; do
+                        docker stop "${w}" 2>/dev/null || true
+                        docker rm "${w}" 2>/dev/null || true
+                        log "  Removed: ${w}"
+                    done
                 fi
                 # Continue with installation using existing config
                 ;;
