@@ -160,7 +160,7 @@ snapshot_baseline() {
     local manager_container="${TEST_MANAGER_CONTAINER:-hiclaw-manager}"
     local manager_session_dir="/root/manager-workspace/.openclaw/agents/main/sessions"
     
-    local result='{"agents": {}}'
+    local snapshot_result='{"agents": {}}'
     
     # Collect Manager baseline
     local manager_session
@@ -170,7 +170,7 @@ snapshot_baseline() {
         local manager_metrics
         manager_metrics=$(docker exec "$manager_container" cat "$manager_session" 2>/dev/null | parse_session_metrics_inline)
         if [ -n "$manager_metrics" ]; then
-            result=$(echo "$result" | jq --argjson m "$manager_metrics" '.agents.manager = $m')
+            snapshot_result=$(echo "$snapshot_result" | jq --argjson m "$manager_metrics" '.agents.manager = $m')
         fi
     fi
     
@@ -190,12 +190,12 @@ snapshot_baseline() {
             local worker_metrics
             worker_metrics=$(docker exec "$worker_container" cat "$worker_session" 2>/dev/null | parse_session_metrics_inline)
             if [ -n "$worker_metrics" ]; then
-                result=$(echo "$result" | jq --arg w "$worker" --argjson m "$worker_metrics" '.agents[$w] = $m')
+                snapshot_result=$(echo "$snapshot_result" | jq --arg w "$worker" --argjson m "$worker_metrics" '.agents[$w] = $m')
             fi
         fi
     done
     
-    echo "$result"
+    echo "$snapshot_result"
 }
 
 # Collect delta metrics (difference from baseline) - metrics consumed during THIS test only
@@ -210,7 +210,7 @@ collect_delta_metrics() {
     local manager_session_dir="/root/manager-workspace/.openclaw/agents/main/sessions"
     
     # Initialize result structure
-    local result='{"test_name": "'"${test_name}"'", "timestamp": "'"$(date -Iseconds)"'", "agents": {}, "totals": {"llm_calls": 0, "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}, "timing": {"duration_seconds": 0}}}'
+    local delta_result='{"test_name": "'"${test_name}"'", "timestamp": "'"$(date -Iseconds)"'", "agents": {}, "totals": {"llm_calls": 0, "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}, "timing": {"duration_seconds": 0}}}'
     
     # Collect Manager delta
     log_info "Collecting Manager delta metrics..." >&2
@@ -244,7 +244,7 @@ collect_delta_metrics() {
                 manager_delta="$current_manager"
             fi
             
-            result=$(echo "$result" | jq --argjson m "$manager_delta" '.agents.manager = $m')
+            delta_result=$(echo "$delta_result" | jq --argjson m "$manager_delta" '.agents.manager = $m')
             log_info "Manager delta: $(echo "$manager_delta" | jq -r '.llm_calls') LLM calls, $(echo "$manager_delta" | jq -r '.tokens.total') tokens" >&2
         fi
     fi
@@ -291,7 +291,7 @@ collect_delta_metrics() {
                     worker_delta="$current_worker"
                 fi
                 
-                result=$(echo "$result" | jq --arg w "$worker" --argjson m "$worker_delta" '.agents[$w] = $m')
+                delta_result=$(echo "$delta_result" | jq --arg w "$worker" --argjson m "$worker_delta" '.agents[$w] = $m')
                 log_info "Worker '${worker}' delta: $(echo "$worker_delta" | jq -r '.llm_calls') LLM calls, $(echo "$worker_delta" | jq -r '.tokens.total') tokens" >&2
             fi
         else
@@ -300,7 +300,7 @@ collect_delta_metrics() {
     done
     
     # Calculate totals
-    result=$(echo "$result" | jq '
+    delta_result=$(echo "$delta_result" | jq '
         .totals.llm_calls = ([.agents[].llm_calls] | add // 0)
         | .totals.tokens.input = ([.agents[].tokens.input] | add // 0)
         | .totals.tokens.output = ([.agents[].tokens.output] | add // 0)
@@ -310,7 +310,7 @@ collect_delta_metrics() {
         | .totals.timing.duration_seconds = ([.agents[].timing.duration_seconds] | add // 0)
     ')
     
-    echo "$result"
+    echo "$delta_result"
 }
 
 # ============================================================
@@ -329,7 +329,7 @@ collect_test_metrics() {
     local manager_session_dir="/root/manager-workspace/.openclaw/agents/main/sessions"
     
     # Initialize result structure
-    local result='{"test_name": "'"${test_name}"'", "timestamp": "'"$(date -Iseconds)"'", "agents": {}, "totals": {"llm_calls": 0, "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}, "timing": {"duration_seconds": 0}}}'
+    local cumulative_result='{"test_name": "'"${test_name}"'", "timestamp": "'"$(date -Iseconds)"'", "agents": {}, "totals": {"llm_calls": 0, "tokens": {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total": 0}, "timing": {"duration_seconds": 0}}}'
     
     # Collect Manager metrics
     log_info "Collecting Manager metrics..." >&2
@@ -340,7 +340,7 @@ collect_test_metrics() {
         local manager_metrics
         manager_metrics=$(docker exec "$manager_container" cat "$manager_session" 2>/dev/null | parse_session_metrics_inline)
         if [ -n "$manager_metrics" ]; then
-            result=$(echo "$result" | jq --argjson m "$manager_metrics" '.agents.manager = $m')
+            cumulative_result=$(echo "$cumulative_result" | jq --argjson m "$manager_metrics" '.agents.manager = $m')
             log_info "Manager: $(echo "$manager_metrics" | jq -r '.llm_calls') LLM calls, $(echo "$manager_metrics" | jq -r '.tokens.total') tokens" >&2
         fi
     else
@@ -367,7 +367,7 @@ collect_test_metrics() {
             local worker_metrics
             worker_metrics=$(docker exec "$worker_container" cat "$worker_session" 2>/dev/null | parse_session_metrics_inline)
             if [ -n "$worker_metrics" ]; then
-                result=$(echo "$result" | jq --arg w "$worker" --argjson m "$worker_metrics" '.agents[$w] = $m')
+                cumulative_result=$(echo "$cumulative_result" | jq --arg w "$worker" --argjson m "$worker_metrics" '.agents[$w] = $m')
                 log_info "Worker '${worker}': $(echo "$worker_metrics" | jq -r '.llm_calls') LLM calls, $(echo "$worker_metrics" | jq -r '.tokens.total') tokens" >&2
             fi
         else
@@ -376,7 +376,7 @@ collect_test_metrics() {
     done
     
     # Calculate totals
-    result=$(echo "$result" | jq '
+    cumulative_result=$(echo "$cumulative_result" | jq '
         .totals.llm_calls = ([.agents[].llm_calls] | add // 0)
         | .totals.tokens.input = ([.agents[].tokens.input] | add // 0)
         | .totals.tokens.output = ([.agents[].tokens.output] | add // 0)
@@ -386,7 +386,7 @@ collect_test_metrics() {
         | .totals.timing.duration_seconds = ([.agents[].timing.duration_seconds] | add // 0)
     ')
     
-    echo "$result"
+    echo "$cumulative_result"
 }
 
 # ============================================================
