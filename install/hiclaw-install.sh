@@ -394,25 +394,6 @@ msg() {
         # --- Container management ---
         "install.removing_existing.zh") text="正在移除现有 hiclaw-manager 容器..." ;;
         "install.removing_existing.en") text="Removing existing hiclaw-manager container..." ;;
-        # --- Volume conflict ---
-        "install.volume_conflict.title.zh") text="卷冲突检测！" ;;
-        "install.volume_conflict.title.en") text="Volume conflict detected!" ;;
-        "install.volume_conflict.detail.zh") text="  Docker 卷 '%s' 由另一个安装创建:" ;;
-        "install.volume_conflict.detail.en") text="  Docker volume '%s' was created by a different installation:" ;;
-        "install.volume_conflict.original.zh") text="    原始安装目录 : %s" ;;
-        "install.volume_conflict.original.en") text="    Original install directory : %s" ;;
-        "install.volume_conflict.current.zh") text="    当前安装目录 : %s" ;;
-        "install.volume_conflict.current.en") text="    Current  install directory : %s" ;;
-        "install.volume_conflict.hint.zh") text="  每个 HiClaw 安装必须使用独立的 Docker 卷。" ;;
-        "install.volume_conflict.hint.en") text="  Each HiClaw installation must use its own Docker volume." ;;
-        "install.volume_conflict.options.zh") text="  选项:" ;;
-        "install.volume_conflict.options.en") text="  Options:" ;;
-        "install.volume_conflict.opt1.zh") text="    1. 从原始目录运行此脚本: %s" ;;
-        "install.volume_conflict.opt1.en") text="    1. Run this script from the original directory: %s" ;;
-        "install.volume_conflict.opt2.zh") text="    2. 使用不同的卷名: HICLAW_DATA_DIR=hiclaw-data-2 %s" ;;
-        "install.volume_conflict.opt2.en") text="    2. Use a different volume name: HICLAW_DATA_DIR=hiclaw-data-2 %s" ;;
-        "install.volume_conflict.opt3.zh") text="    3. 从原始目录执行全新重装（升级菜单中的选项 2）" ;;
-        "install.volume_conflict.opt3.en") text="    3. Perform a clean reinstall from the original directory (option 2 in the upgrade menu)" ;;
         # --- YOLO mode ---
         "install.yolo.zh") text="YOLO 模式已启用（自主决策，无交互提示）" ;;
         "install.yolo.en") text="YOLO mode enabled (autonomous decisions, no interactive prompts)" ;;
@@ -677,57 +658,62 @@ send_welcome_message() {
     log "$(msg install.welcome_msg.logging_in "${admin_user}")"
 
     # Run all Matrix API calls and jq parsing inside the container (jq is only available there).
-    # Build the inner script as a variable first (avoids bash -s stdin conflict with $() capture).
+    # Pass language/timezone via env vars to avoid special-character injection into the script body.
     local inner_script
-    inner_script=$(cat <<INNER_SCRIPT
+    inner_script=$(cat <<'INNER_SCRIPT'
 MATRIX_URL="http://127.0.0.1:6167"
-ADMIN_USER="${admin_user}"
-ADMIN_PASSWORD="${admin_password}"
-MATRIX_DOMAIN="${matrix_domain}"
-MANAGER_FULL_ID="@manager:\${MATRIX_DOMAIN}"
+MANAGER_FULL_ID="@manager:${MATRIX_DOMAIN}"
 
-login_resp=\$(curl -sf -X POST "\${MATRIX_URL}/_matrix/client/v3/login" \\
-    -H 'Content-Type: application/json' \\
-    -d "{\"type\":\"m.login.password\",\"identifier\":{\"type\":\"m.id.user\",\"user\":\"\${ADMIN_USER}\"},\"password\":\"\${ADMIN_PASSWORD}\"}" 2>/dev/null) || true
-access_token=\$(echo "\${login_resp}" | jq -r '.access_token // empty' 2>/dev/null)
-if [ -z "\${access_token}" ]; then
-    echo "LOGIN_FAILED: \${login_resp}" >&2; echo "LOGIN_FAILED"; exit 0
+login_resp=$(curl -sf -X POST "${MATRIX_URL}/_matrix/client/v3/login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"type\":\"m.login.password\",\"identifier\":{\"type\":\"m.id.user\",\"user\":\"${ADMIN_USER}\"},\"password\":\"${ADMIN_PASSWORD}\"}" 2>/dev/null) || true
+access_token=$(echo "${login_resp}" | jq -r '.access_token // empty' 2>/dev/null)
+if [ -z "${access_token}" ]; then
+    echo "LOGIN_FAILED: ${login_resp}" >&2; echo "LOGIN_FAILED"; exit 0
 fi
 
 room_id=""
-rooms=\$(curl -sf "\${MATRIX_URL}/_matrix/client/v3/joined_rooms" \\
-    -H "Authorization: Bearer \${access_token}" 2>/dev/null | jq -r '.joined_rooms[]' 2>/dev/null) || true
-for rid in \${rooms}; do
-    members=\$(curl -sf "\${MATRIX_URL}/_matrix/client/v3/rooms/\${rid}/members" \\
-        -H "Authorization: Bearer \${access_token}" 2>/dev/null | jq -r '.chunk[].state_key' 2>/dev/null) || continue
-    member_count=\$(echo "\${members}" | wc -l | xargs)
-    if [ "\${member_count}" = "2" ] && echo "\${members}" | grep -q "@manager:"; then
-        room_id="\${rid}"; break
+rooms=$(curl -sf "${MATRIX_URL}/_matrix/client/v3/joined_rooms" \
+    -H "Authorization: Bearer ${access_token}" 2>/dev/null | jq -r '.joined_rooms[]' 2>/dev/null) || true
+for rid in ${rooms}; do
+    members=$(curl -sf "${MATRIX_URL}/_matrix/client/v3/rooms/${rid}/members" \
+        -H "Authorization: Bearer ${access_token}" 2>/dev/null | jq -r '.chunk[].state_key' 2>/dev/null) || continue
+    member_count=$(echo "${members}" | wc -l | xargs)
+    if [ "${member_count}" = "2" ] && echo "${members}" | grep -q "@manager:"; then
+        room_id="${rid}"; break
     fi
 done
 
-if [ -z "\${room_id}" ]; then
-    create_resp=\$(curl -sf -X POST "\${MATRIX_URL}/_matrix/client/v3/createRoom" \\
-        -H "Authorization: Bearer \${access_token}" \\
-        -H 'Content-Type: application/json' \\
-        -d "{\"is_direct\":true,\"invite\":[\"\${MANAGER_FULL_ID}\"],\"preset\":\"trusted_private_chat\"}" 2>/dev/null) || true
-    room_id=\$(echo "\${create_resp}" | jq -r '.room_id // empty' 2>/dev/null)
+if [ -z "${room_id}" ]; then
+    create_resp=$(curl -sf -X POST "${MATRIX_URL}/_matrix/client/v3/createRoom" \
+        -H "Authorization: Bearer ${access_token}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"is_direct\":true,\"invite\":[\"${MANAGER_FULL_ID}\"],\"preset\":\"trusted_private_chat\"}" 2>/dev/null) || true
+    room_id=$(echo "${create_resp}" | jq -r '.room_id // empty' 2>/dev/null)
 fi
-[ -z "\${room_id}" ] && { echo "NO_ROOM" >&2; echo "NO_ROOM"; exit 0; }
+[ -z "${room_id}" ] && { echo "NO_ROOM" >&2; echo "NO_ROOM"; exit 0; }
 
+# Wait for Manager to join; bail out if it never does (avoids 403 on send)
+manager_joined=false
 wait_elapsed=0
-while [ "\${wait_elapsed}" -lt 60 ]; do
-    members=\$(curl -sf "\${MATRIX_URL}/_matrix/client/v3/rooms/\${room_id}/members" \\
-        -H "Authorization: Bearer \${access_token}" 2>/dev/null | jq -r '.chunk[].state_key' 2>/dev/null) || true
-    echo "\${members}" | grep -q "\${MANAGER_FULL_ID}" && break
-    sleep 2; wait_elapsed=\$((wait_elapsed + 2))
+while [ "${wait_elapsed}" -lt 60 ]; do
+    members=$(curl -sf "${MATRIX_URL}/_matrix/client/v3/rooms/${room_id}/members" \
+        -H "Authorization: Bearer ${access_token}" 2>/dev/null | jq -r '.chunk[].state_key' 2>/dev/null) || true
+    if echo "${members}" | grep -q "${MANAGER_FULL_ID}"; then
+        manager_joined=true; break
+    fi
+    sleep 2; wait_elapsed=$((wait_elapsed + 2))
 done
+if [ "${manager_joined}" != "true" ]; then
+    echo "NO_ROOM" >&2; echo "NO_ROOM"; exit 0
+fi
 
+# HICLAW_LANGUAGE and HICLAW_TIMEZONE are passed in via -e flags; use them directly
 welcome_msg="This is an automated message from the HiClaw installation script. This is a fresh installation.
 
 --- Installation Context ---
-User Language: ${language}  (zh = Chinese, en = English)
-User Timezone: ${timezone}  (IANA timezone identifier)
+User Language: ${HICLAW_LANGUAGE}  (zh = Chinese, en = English)
+User Timezone: ${HICLAW_TIMEZONE}  (IANA timezone identifier)
 ---
 
 You are an AI agent that manages a team of worker agents. Your identity and personality have not been configured yet — the human admin is about to meet you for the first time.
@@ -735,8 +721,8 @@ You are an AI agent that manages a team of worker agents. Your identity and pers
 Please begin the onboarding conversation:
 
 1. Greet the admin warmly and briefly describe what you can do (coordinate workers, manage tasks, run multi-agent projects) — without referring to yourself by any specific title yet
-2. The user has selected \"${language}\" as their preferred language during installation. Use this language for your greeting and all subsequent communication.
-3. The user's timezone is ${timezone}. Based on this timezone, you may infer their likely region and suggest additional language options (e.g., Japanese, Korean, German, etc.) that they might prefer for future interactions.
+2. The user has selected \"${HICLAW_LANGUAGE}\" as their preferred language during installation. Use this language for your greeting and all subsequent communication.
+3. The user's timezone is ${HICLAW_TIMEZONE}. Based on this timezone, you may infer their likely region and suggest additional language options (e.g., Japanese, Korean, German, etc.) that they might prefer for future interactions.
 4. Ask them the following questions (one message is fine):
    a. What would they like to call you? (name or title)
    b. What communication style do they prefer? (e.g. formal, casual, concise, detailed)
@@ -748,18 +734,26 @@ Please begin the onboarding conversation:
 
 The human admin will start chatting shortly."
 
-txn_id="welcome-\$(date +%s)"
-payload=\$(jq -nc --arg body "\${welcome_msg}" '{"msgtype":"m.text","body":\$body}')
-curl -sf -X PUT "\${MATRIX_URL}/_matrix/client/v3/rooms/\${room_id}/send/m.room.message/\${txn_id}" \\
-    -H "Authorization: Bearer \${access_token}" \\
-    -H 'Content-Type: application/json' \\
-    -d "\${payload}" > /dev/null 2>&1 || { echo "SEND_FAILED" >&2; echo "SEND_FAILED"; exit 0; }
+txn_id="welcome-$(date +%s)"
+payload=$(jq -nc --arg body "${welcome_msg}" '{"msgtype":"m.text","body":$body}')
+curl -sf -X PUT "${MATRIX_URL}/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn_id}" \
+    -H "Authorization: Bearer ${access_token}" \
+    -H 'Content-Type: application/json' \
+    -d "${payload}" > /dev/null 2>&1 || { echo "SEND_FAILED" >&2; echo "SEND_FAILED"; exit 0; }
 echo "OK"
 INNER_SCRIPT
 )
 
     local result
-    result=$(docker exec "${container}" bash -c "${inner_script}")
+    # Pass credentials and language/timezone as env vars (-e) so they never touch the script body.
+    # Use ${DOCKER_CMD} consistently (supports both docker and podman).
+    result=$(${DOCKER_CMD} exec \
+        -e ADMIN_USER="${admin_user}" \
+        -e ADMIN_PASSWORD="${admin_password}" \
+        -e MATRIX_DOMAIN="${matrix_domain}" \
+        -e HICLAW_LANGUAGE="${language}" \
+        -e HICLAW_TIMEZONE="${timezone}" \
+        "${container}" bash -c "${inner_script}")
 
     case "${result}" in
         *LOGIN_FAILED*)
@@ -1450,29 +1444,9 @@ EOF
         ${DOCKER_CMD} rm hiclaw-manager 2>/dev/null || true
     fi
 
-    # Check if the Docker volume is already owned by a different installation directory
-    if ${DOCKER_CMD} volume ls -q | grep -q "^${HICLAW_DATA_DIR}$"; then
-        EXISTING_INSTALL_PATH=$(${DOCKER_CMD} volume inspect "${HICLAW_DATA_DIR}" \
-            --format '{{index .Labels "hiclaw.install-path"}}' 2>/dev/null || true)
-        CURRENT_INSTALL_PATH="$(pwd)"
-        if [ -n "${EXISTING_INSTALL_PATH}" ] && [ "${EXISTING_INSTALL_PATH}" != "${CURRENT_INSTALL_PATH}" ]; then
-            echo ""
-            echo -e "\033[31m[HiClaw ERROR] $(msg install.volume_conflict.title)\033[0m" >&2
-            echo -e "\033[31m$(msg install.volume_conflict.detail "${HICLAW_DATA_DIR}")\033[0m" >&2
-            echo -e "\033[31m$(msg install.volume_conflict.original "${EXISTING_INSTALL_PATH}")\033[0m" >&2
-            echo -e "\033[31m$(msg install.volume_conflict.current "${CURRENT_INSTALL_PATH}")\033[0m" >&2
-            echo "" >&2
-            echo -e "\033[33m$(msg install.volume_conflict.hint)\033[0m" >&2
-            echo -e "\033[33m$(msg install.volume_conflict.options)\033[0m" >&2
-            echo -e "\033[33m$(msg install.volume_conflict.opt1 "${EXISTING_INSTALL_PATH}")\033[0m" >&2
-            echo -e "\033[33m$(msg install.volume_conflict.opt2 "$0")\033[0m" >&2
-            echo -e "\033[33m$(msg install.volume_conflict.opt3)\033[0m" >&2
-            echo "" >&2
-            exit 1
-        fi
-    else
-        # Create the volume with an install-path label so future installs can detect conflicts
-        ${DOCKER_CMD} volume create --label "hiclaw.install-path=$(pwd)" "${HICLAW_DATA_DIR}" > /dev/null
+    # Create the data volume if it doesn't already exist (reuse on reinstall)
+    if ! ${DOCKER_CMD} volume ls -q | grep -q "^${HICLAW_DATA_DIR}$"; then
+        ${DOCKER_CMD} volume create "${HICLAW_DATA_DIR}" > /dev/null
     fi
 
     # Data mount: Docker volume

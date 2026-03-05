@@ -312,17 +312,6 @@ $script:Messages = @{
     # --- Container management ---
     "install.removing_existing" = @{ zh = "正在移除现有 hiclaw-manager 容器..."; en = "Removing existing hiclaw-manager container..." }
 
-    # --- Volume conflict ---
-    "install.volume_conflict.title" = @{ zh = "卷冲突检测！"; en = "Volume conflict detected!" }
-    "install.volume_conflict.detail" = @{ zh = "  Docker 卷 '{0}' 由另一个安装创建:"; en = "  Docker volume '{0}' was created by a different installation:" }
-    "install.volume_conflict.original" = @{ zh = "    原始安装目录 : {0}"; en = "    Original install directory : {0}" }
-    "install.volume_conflict.current" = @{ zh = "    当前安装目录 : {0}"; en = "    Current  install directory : {0}" }
-    "install.volume_conflict.hint" = @{ zh = "  每个 HiClaw 安装必须使用独立的 Docker 卷。"; en = "  Each HiClaw installation must use its own Docker volume." }
-    "install.volume_conflict.options" = @{ zh = "  选项:"; en = "  Options:" }
-    "install.volume_conflict.opt1" = @{ zh = "    1. 从原始目录运行此脚本: {0}"; en = "    1. Run this script from the original directory: {0}" }
-    "install.volume_conflict.opt2" = @{ zh = "    2. 使用不同的卷名: HICLAW_DATA_DIR=hiclaw-data-2 {0}"; en = "    2. Use a different volume name: HICLAW_DATA_DIR=hiclaw-data-2 {0}" }
-    "install.volume_conflict.opt3" = @{ zh = "    3. 从原始目录执行全新重装（升级菜单中的选项 2）"; en = "    3. Perform a clean reinstall from the original directory (option 2 in the upgrade menu)" }
-
     # --- YOLO mode ---
     "install.yolo" = @{ zh = "YOLO 模式已启用（自主决策，无交互提示）"; en = "YOLO mode enabled (autonomous decisions, no interactive prompts)" }
 
@@ -859,6 +848,7 @@ function Send-WelcomeMessage {
     $waitElapsed = 0
     $waitTimeout = 60
 
+    $managerJoined = $false
     while ($waitElapsed -lt $waitTimeout) {
         try {
             $membersResp = docker exec $Container curl -sf "$matrixUrl/_matrix/client/v3/rooms/$roomId/members" `
@@ -866,6 +856,7 @@ function Send-WelcomeMessage {
             $members = ($membersResp | ConvertFrom-Json).chunk.state_key
 
             if ($members -match [regex]::Escape($managerFullId)) {
+                $managerJoined = $true
                 break
             }
         } catch {
@@ -874,6 +865,12 @@ function Send-WelcomeMessage {
 
         Start-Sleep -Seconds 2
         $waitElapsed += 2
+    }
+
+    # Bail out if Manager never joined — sending would return 403
+    if (-not $managerJoined) {
+        Write-Log (Get-Msg "install.welcome_msg.no_room")
+        return $false
     }
 
     # Send welcome message
@@ -1513,29 +1510,10 @@ function Install-Manager {
         docker rm hiclaw-manager *>$null
     }
 
-    # Check if the Docker volume is already owned by a different installation directory
+    # Check if the Docker volume exists; create if not (reuse on reinstall)
     $volumeExists = docker volume ls -q 2>$null | Select-String "^$($config.DATA_DIR)$"
-    if ($volumeExists) {
-        $existingInstallPath = (docker volume inspect $config.DATA_DIR --format '{{index .Labels "hiclaw.install-path"}}' 2>$null) -join ""
-        $currentInstallPath = (Get-Location).Path
-        if ($existingInstallPath -and $existingInstallPath.Trim() -ne $currentInstallPath) {
-            Write-Host ""
-            Write-Host "`e[31m[HiClaw ERROR] $(Get-Msg 'install.volume_conflict.title')`e[0m"
-            Write-Host "`e[31m$(Get-Msg 'install.volume_conflict.detail' -f $config.DATA_DIR)`e[0m"
-            Write-Host "`e[31m$(Get-Msg 'install.volume_conflict.original' -f $existingInstallPath.Trim())`e[0m"
-            Write-Host "`e[31m$(Get-Msg 'install.volume_conflict.current' -f $currentInstallPath)`e[0m"
-            Write-Host ""
-            Write-Host "`e[33m$(Get-Msg 'install.volume_conflict.hint')`e[0m"
-            Write-Host "`e[33m$(Get-Msg 'install.volume_conflict.options')`e[0m"
-            Write-Host "`e[33m$(Get-Msg 'install.volume_conflict.opt1' -f $existingInstallPath.Trim())`e[0m"
-            Write-Host "`e[33m$(Get-Msg 'install.volume_conflict.opt2' -f '.\hiclaw-install.ps1')`e[0m"
-            Write-Host "`e[33m$(Get-Msg 'install.volume_conflict.opt3')`e[0m"
-            Write-Host ""
-            throw "Volume conflict: cannot reuse volume '$($config.DATA_DIR)' from a different installation directory."
-        }
-    } else {
-        # Create the volume with an install-path label so future installs can detect conflicts
-        docker volume create --label "hiclaw.install-path=$($(Get-Location).Path)" $config.DATA_DIR | Out-Null
+    if (-not $volumeExists) {
+        docker volume create $config.DATA_DIR | Out-Null
     }
 
     # Pull images (skip if already exists locally)
