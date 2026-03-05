@@ -6,6 +6,8 @@
 - [How to talk to a Worker directly](#how-to-talk-to-a-worker-directly)
 - [How to switch the Manager's model](#how-to-switch-the-managers-model)
 - [How to switch a Worker's model](#how-to-switch-a-workers-model)
+- [Why does Manager/Worker keep showing "typing"](#why-does-managerworker-keep-showing-typing)
+- [Manager not responding or returning error status codes](#manager-not-responding-or-returning-error-status-codes)
 
 ---
 
@@ -96,3 +98,38 @@ The process is similar to switching the Manager's model, and Manager handles it 
 **After creation**: Tell Manager at any time to switch a Worker's model, e.g. "Switch alice to use `claude-3-5-sonnet`." Manager will update the Worker's configuration accordingly.
 
 Make sure the Higress `default-ai-route` is already configured to route the target model name to the right provider before switching.
+
+---
+
+## Why does Manager/Worker keep showing "typing"
+
+This is normal — it means the underlying OpenClaw agent engine is actively executing. HiClaw sets a 30-minute timeout per task, so an agent can stay in this state for up to 30 minutes while working.
+
+To see what the agent is actually doing, exec into the Manager or Worker container and check the session logs:
+
+```bash
+# For Manager
+docker exec -it hiclaw-manager ls /root/.openclaw/agents/main/sessions/
+
+# For a Worker (replace <worker-name> with the actual container name)
+docker exec -it <worker-name> ls /root/.openclaw/agents/main/sessions/
+```
+
+The `.jsonl` files in that directory are written by OpenClaw in real time and contain the full agent execution trace — LLM calls, tool use, reasoning steps, etc.
+
+---
+
+## Manager not responding or returning error status codes
+
+If Manager stops responding or you see error codes like 404 or 503, check the Higress AI Gateway log:
+
+```bash
+docker exec -it hiclaw-manager cat /var/log/hiclaw/higress-gateway.log
+```
+
+Search the log for the relevant status code. Common causes:
+
+- **503**: The container can't reach the external LLM service — likely a network issue inside the container.
+- **404**: The model name is probably wrong.
+
+To determine whether the error came from the backend or from a Higress misconfiguration, check the `upstream_host` field in the log entry. If `upstream_host` has a value, the request reached the backend and the error was returned by the upstream service. If it's empty, Higress itself couldn't route the request.

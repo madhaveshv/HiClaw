@@ -6,6 +6,8 @@
 - [如何主动指挥 Worker](#如何主动指挥-worker)
 - [如何切换 Manager 的模型](#如何切换-manager-的模型)
 - [如何切换 Worker 的模型](#如何切换-worker-的模型)
+- [为什么 Manager/Worker 一直显示"输入中"](#为什么-managerworker-一直显示输入中)
+- [在房间里和 Manager 聊天没有响应或返回错误状态码](#在房间里和-manager-聊天没有响应或返回错误状态码)
 
 ---
 
@@ -96,3 +98,38 @@ http://<局域网IP>:18080
 **创建后修改**：随时告诉 Manager 切换某个 Worker 的模型，例如"把 alice 的模型切换为 `claude-3-5-sonnet`"，Manager 会自动更新该 Worker 的配置。
 
 切换前请确保 Higress 的 `default-ai-route` 已配置好目标模型名到对应供应商的路由。
+
+---
+
+## 为什么 Manager/Worker 一直显示"输入中"
+
+这是正常现象，说明底层的 OpenClaw Agent 引擎正在执行任务。HiClaw 设定的单次任务超时时间为 30 分钟，Agent 最长会持续执行 30 分钟。
+
+如果想查看 Agent 的执行细节，可以进入 Manager 或 Worker 容器，查看 session 日志：
+
+```bash
+# Manager
+docker exec -it hiclaw-manager ls /root/.openclaw/agents/main/sessions/
+
+# Worker（将 <worker-name> 替换为实际容器名）
+docker exec -it <worker-name> ls /root/.openclaw/agents/main/sessions/
+```
+
+该目录下的 `.jsonl` 文件由 OpenClaw 实时写入，记录了完整的 Agent 执行过程，包括 LLM 调用、工具使用、推理步骤等。
+
+---
+
+## 在房间里和 Manager 聊天没有响应或返回错误状态码
+
+如果 Manager 没有响应，或者返回了 404、503 等状态码，查看 Higress AI 网关日志：
+
+```bash
+docker exec -it hiclaw-manager cat /var/log/hiclaw/higress-gateway.log
+```
+
+在日志中搜索对应的状态码，常见原因：
+
+- **503**：容器内网络环境问题，导致外网 LLM 服务不可达。
+- **404**：模型名称填写有误。
+
+要判断是后端服务出错还是 Higress 自身配置问题，查看日志中的 `upstream_host` 字段：如果该字段有值，说明请求已到达后端，异常状态码是由上游服务返回的；如果为空，说明 Higress 本身无法路由该请求。
