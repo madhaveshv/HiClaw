@@ -20,19 +20,16 @@ on:
         default: ''
 
 env:
-  # Registry settings
-  REGISTRY: higress-registry.cn-hangzhou.cr.aliyuncs.com
-  REPO: higress
-  VERSION: ci-${{ github.sha }}
+  # Local image tags (no registry push needed)
+  MANAGER_IMAGE: hiclaw/manager-agent:ci-test
+  WORKER_IMAGE: hiclaw/worker-agent:ci-test
 
 jobs:
-  # Build manager image first (required for tests)
-  build-manager:
+  # Build images locally (no registry push)
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
     
     steps:
       - name: Free Up GitHub Actions Ubuntu Runner Disk Space
@@ -51,38 +48,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
-
-      - name: Extract metadata
-        id: meta
+      # Pull base images first to ensure they're available
+      - name: Pull base images
         run: |
-          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
-          echo "image_tag=ci-${SHA_SHORT}" >> $GITHUB_OUTPUT
+          docker pull higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/openclaw-base:latest
 
-      # Build manager image for testing (linux/amd64 only for CI speed)
-      - name: Build and push manager image
+      # Build manager and worker images locally (no push)
+      - name: Build images
         run: |
-          make push-manager \
-            VERSION=${{ steps.meta.outputs.image_tag }} \
-            REGISTRY=${{ env.REGISTRY }} \
-            REPO=${{ env.REPO }} \
-            PLATFORMS=linux/amd64
+          make build-manager build-worker VERSION=ci-test
 
-      - name: Summary
+      - name: List built images
+        run: |
+          docker images | grep hiclaw
+
+      - name: Build Summary
         run: |
           echo "### Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Manager Image: \`${{ env.REGISTRY }}/${{ env.REPO }}/hiclaw-manager:${{ steps.meta.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Platform: \`linux/amd64\` (CI only)" >> $GITHUB_STEP_SUMMARY
+          echo "- Manager Image: \`${{ env.MANAGER_IMAGE }}\` (local)" >> $GITHUB_STEP_SUMMARY
+          echo "- Worker Image: \`${{ env.WORKER_IMAGE }}\` (local)" >> $GITHUB_STEP_SUMMARY
+          echo "- Platform: \`linux/amd64\` (native)" >> $GITHUB_STEP_SUMMARY
 
-  # Run integration tests
+  # Run integration tests with local images
   integration-tests:
-    needs: build-manager
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -105,12 +94,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.REGISTRY_USERNAME }}
-          password: ${{ secrets.REGISTRY_PASSWORD }}
+      # Pull base images first
+      - name: Pull base images
+        run: |
+          docker pull higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/openclaw-base:latest
+
+      # Rebuild images (needed since each job runs on fresh runner)
+      - name: Build images
+        run: |
+          make build-manager build-worker VERSION=ci-test
 
       - name: Install dependencies
         run: |
@@ -120,49 +112,61 @@ jobs:
       - name: Run HiClaw installation
         env:
           HICLAW_LLM_API_KEY: ${{ secrets.HICLAW_LLM_API_KEY }}
-          HICLAW_MANAGER_IMAGE: ${{ env.REGISTRY }}/${{ env.REPO }}/hiclaw-manager:${{ needs.build-manager.outputs.image_tag }}
         run: |
-          # Use the CI-built manager image
-          export MANAGER_IMAGE="${HICLAW_MANAGER_IMAGE}"
-          
-          # Install HiClaw
-          make install
+          # Install HiClaw with local images
+          HICLAW_NON_INTERACTIVE=1 \
+          HICLAW_VERSION=ci-test \
+          HICLAW_MOUNT_SOCKET=1 \
+          HICLAW_INSTALL_MANAGER_IMAGE=${{ env.MANAGER_IMAGE }} \
+          HICLAW_INSTALL_WORKER_IMAGE=${{ env.WORKER_IMAGE }} \
+          ./install/hiclaw-install.sh manager
 
       - name: Wait for Manager to be ready
         run: |
           echo "Waiting for Manager to be healthy..."
           for i in {1..60}; do
-            if docker exec hiclaw-manager curl -sf http://localhost:8001/health >/dev/null 2>&1; then
-              echo "Manager is healthy!"
-              exit 0
+            if docker exec hiclaw-manager curl -sf http://127.0.0.1:8001/ >/dev/null 2>&1; then
+              echo "Manager console is ready!"
+              # Additional wait for internal services
+              sleep 10
+              # Check internal services via docker exec
+              if docker exec hiclaw-manager curl -sf http://127.0.0.1:6167/_matrix/client/versions >/dev/null 2>&1; then
+                echo "Matrix is ready!"
+                # Wait for agent initialization
+                echo "Waiting 60s for Manager Agent initialization..."
+                sleep 60
+                exit 0
+              fi
             fi
             echo "Waiting... ($i/60)"
             sleep 5
           done
           echo "Manager did not become healthy in time"
+          docker logs hiclaw-manager --tail 50
           exit 1
 
       - name: Run integration tests
         env:
           HICLAW_LLM_API_KEY: ${{ secrets.HICLAW_LLM_API_KEY }}
           TEST_MANAGER_CONTAINER: hiclaw-manager
-          TEST_GATEWAY_PORT: "18080"
-          TEST_ADMIN_PASSWORD: admin267fabc76cfe
-          TEST_MATRIX_DOMAIN: matrix-local.hiclaw.io:18080
+          TEST_GATEWAY_PORT: "8080"
+          TEST_CONSOLE_PORT: "8001"
         run: |
+          # Enable YOLO mode for automated testing
+          docker exec hiclaw-manager touch /root/manager-workspace/yolo-mode
+          
           # Run specific test or all tests
           if [ -n "${{ github.event.inputs.test_case }}" ]; then
             echo "Running specific test: ${{ github.event.inputs.test_case }}"
             ./tests/${{ github.event.inputs.test_case }}
           else
             echo "Running all integration tests..."
-            ./tests/run-all-tests.sh
+            ./tests/run-all-tests.sh --skip-build --use-existing
           fi
 
       - name: Collect test artifacts
         if: always()
         run: |
-          # Create artifacts directory
           mkdir -p test-artifacts
           
           # Copy test output files
@@ -172,9 +176,10 @@ jobs:
           
           # Collect Manager logs
           docker logs hiclaw-manager > test-artifacts/manager.log 2>&1 || true
+          docker exec hiclaw-manager cat /var/log/hiclaw/manager-agent.log > test-artifacts/manager-agent.log 2>&1 || true
           
           # Collect Worker logs (if any)
-          for container in $(docker ps --format '{{.Names}}' | grep hiclaw-worker); do
+          for container in $(docker ps -a --format '{{.Names}}' | grep hiclaw-worker); do
             docker logs "$container" > "test-artifacts/${container}.log" 2>&1 || true
           done
 
@@ -189,15 +194,13 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          # Uninstall HiClaw
           make uninstall || true
-          
-          # Clean up any remaining resources
           docker system prune -af || true
 
       - name: Test Summary
         if: always()
         run: |
           echo "### Test Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Manager Image: \`${{ env.REGISTRY }}/${{ env.REPO }}/hiclaw-manager:${{ needs.build-manager.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Test artifacts uploaded to: \`test-artifacts-${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Manager Image: \`${{ env.MANAGER_IMAGE }}\` (local build)" >> $GITHUB_STEP_SUMMARY
+          echo "- Worker Image: \`${{ env.WORKER_IMAGE }}\` (local build)" >> $GITHUB_STEP_SUMMARY
+          echo "- No registry push required" >> $GITHUB_STEP_SUMMARY
