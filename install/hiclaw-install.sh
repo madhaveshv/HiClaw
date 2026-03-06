@@ -427,6 +427,17 @@ msg() {
         "install.wait_matrix.waiting.en") text="Waiting for Matrix... (%ds/%ds)" ;;
         "install.wait_matrix.timeout.zh") text="Matrix 服务在 %ss 内未就绪。请检查: docker logs %s" ;;
         "install.wait_matrix.timeout.en") text="Matrix server did not become ready within %ss. Check: docker logs %s" ;;
+        # --- OpenAI-compatible connectivity test ---
+        "llm.openai.test.testing.zh") text="正在测试 API 联通性..." ;;
+        "llm.openai.test.testing.en") text="Testing API connectivity..." ;;
+        "llm.openai.test.ok.zh") text="✅ API 联通性测试通过" ;;
+        "llm.openai.test.ok.en") text="✅ API connectivity test passed" ;;
+        "llm.openai.test.fail.zh") text="⚠️  API 联通性测试失败（HTTP %s）。响应内容:\n%s\n请根据以上错误信息联系您的模型服务商解决。安装将继续，但 Agent 可能无法正常工作。" ;;
+        "llm.openai.test.fail.en") text="⚠️  API connectivity test failed (HTTP %s). Response body:\n%s\nPlease contact your model provider to resolve the issue. Installation will continue, but the Agent may not work correctly." ;;
+        "llm.openai.test.fail.codingplan.zh") text="⚠️  提示: 请确认您的 API Key 已开通阿里云百炼 CodingPlan 服务。开通地址: https://www.aliyun.com/benefit/scene/codingplan" ;;
+        "llm.openai.test.fail.codingplan.en") text="⚠️  Hint: Please verify that your API Key has CodingPlan service enabled on Alibaba Cloud Bailian. Enable at: https://www.aliyun.com/benefit/scene/codingplan" ;;
+        "llm.openai.test.no_curl.zh") text="⚠️  未找到 curl，跳过 API 联通性测试" ;;
+        "llm.openai.test.no_curl.en") text="⚠️  curl not found, skipping API connectivity test" ;;
         # --- OpenAI-compatible provider creation ---
         "install.openai_compat.missing.zh") text="警告: OpenAI Base URL 或 API Key 未设置，跳过提供商创建" ;;
         "install.openai_compat.missing.en") text="WARNING: OpenAI Base URL or API Key not set, skipping provider creation" ;;
@@ -1252,6 +1263,12 @@ install_manager() {
                 log "$(msg llm.apikey_url)"
                 log ""
                 prompt HICLAW_LLM_API_KEY "$(msg llm.apikey_prompt)" "" "true"
+                # Connectivity test
+                if [ "${ALIBABA_MODEL_CHOICE}" = "2" ] || [ "${ALIBABA_MODEL_CHOICE}" = "qwen" ]; then
+                    test_llm_connectivity "https://dashscope.aliyuncs.com/compatible-mode/v1" "${HICLAW_LLM_API_KEY}" "${HICLAW_DEFAULT_MODEL}"
+                else
+                    test_llm_connectivity "${HICLAW_OPENAI_BASE_URL}" "${HICLAW_LLM_API_KEY}" "${HICLAW_DEFAULT_MODEL}" "$(msg llm.openai.test.fail.codingplan)"
+                fi
                 ;;
             2|openai-compat)
                 HICLAW_LLM_PROVIDER="openai-compat"
@@ -1264,6 +1281,7 @@ install_manager() {
                 log "$(msg llm.model.label "${HICLAW_DEFAULT_MODEL}")"
                 log ""
                 prompt HICLAW_LLM_API_KEY "$(msg llm.apikey_prompt)" "" "true"
+                test_llm_connectivity "${HICLAW_OPENAI_BASE_URL}" "${HICLAW_LLM_API_KEY}" "${HICLAW_DEFAULT_MODEL}"
                 ;;
             *)
                 log "$(msg llm.provider.invalid)"
@@ -1277,6 +1295,7 @@ install_manager() {
                 log "$(msg llm.apikey_url)"
                 log ""
                 prompt HICLAW_LLM_API_KEY "$(msg llm.apikey_prompt)" "" "true"
+                test_llm_connectivity "${HICLAW_OPENAI_BASE_URL}" "${HICLAW_LLM_API_KEY}" "${HICLAW_DEFAULT_MODEL}" "$(msg llm.openai.test.fail.codingplan)"
                 ;;
         esac
     fi
@@ -1717,6 +1736,41 @@ install_worker() {
 # ============================================================
 
 # ============================================================
+# LLM API connectivity test
+# ============================================================
+
+test_llm_connectivity() {
+    local base_url="$1"
+    local api_key="$2"
+    local model="$3"
+    local hint="${4:-}"  # optional: extra hint shown on failure
+    if ! command -v curl >/dev/null 2>&1; then
+        echo -e "\033[33m$(msg llm.openai.test.no_curl)\033[0m"
+        return
+    fi
+    log "$(msg llm.openai.test.testing)"
+    local _body _http_code _tmpfile
+    _tmpfile=$(mktemp)
+    _http_code=$(curl -s -o "${_tmpfile}" -w "%{http_code}" \
+        -X POST "${base_url%/}/chat/completions" \
+        -H "Authorization: Bearer ${api_key}" \
+        -H "Content-Type: application/json" \
+        --max-time 30 \
+        -d "{\"model\":\"${model}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1}" \
+        2>/dev/null)
+    _body=$(cat "${_tmpfile}")
+    rm -f "${_tmpfile}"
+    if [ "${_http_code}" = "200" ] || [ "${_http_code}" = "201" ]; then
+        log "$(msg llm.openai.test.ok)"
+    else
+        echo -e "\033[33m$(msg llm.openai.test.fail "${_http_code}" "${_body}")\033[0m"
+        if [ -n "${hint}" ]; then
+            echo -e "\033[33m${hint}\033[0m"
+        fi
+    fi
+}
+
+# ============================================================
 # Check container runtime (docker or podman)
 # ============================================================
 
@@ -1731,7 +1785,7 @@ check_container_runtime() {
     fi
 
     # Command exists — check if daemon is running
-    if ! ${DOCKER_CMD} info >/dev/null 2>&1; then
+    if ! ${DOCKER_CMD} ps >/dev/null 2>&1; then
         echo -e "\033[31m[HiClaw ERROR]\033[0m $(msg error.docker_not_running)" >&2
         exit 1
     fi

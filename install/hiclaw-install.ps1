@@ -336,6 +336,11 @@ $script:Messages = @{
     "install.wait_matrix.waiting" = @{ zh = "等待 Matrix 中... ({0}s/{1}s)"; en = "Waiting for Matrix... ({0}s/{1}s)" }
     "install.wait_matrix.timeout" = @{ zh = "Matrix 服务在 {0}s 内未就绪。请检查: docker logs {1}"; en = "Matrix server did not become ready within {0}s. Check: docker logs {1}" }
 
+    # --- OpenAI-compatible connectivity test ---
+    "llm.openai.test.testing" = @{ zh = "正在测试 API 联通性..."; en = "Testing API connectivity..." }
+    "llm.openai.test.ok" = @{ zh = "✅ API 联通性测试通过"; en = "✅ API connectivity test passed" }
+    "llm.openai.test.fail" = @{ zh = "⚠️  API 联通性测试失败（HTTP {0}）。响应内容:`n{1}`n请根据以上错误信息联系您的模型服务商解决。安装将继续，但 Agent 可能无法正常工作。"; en = "⚠️  API connectivity test failed (HTTP {0}). Response body:`n{1}`nPlease contact your model provider to resolve the issue. Installation will continue, but the Agent may not work correctly." }
+    "llm.openai.test.fail.codingplan" = @{ zh = "⚠️  提示: 请确认您的 API Key 已开通阿里云百炼 CodingPlan 服务。开通地址: https://www.aliyun.com/benefit/scene/codingplan"; en = "⚠️  Hint: Please verify that your API Key has CodingPlan service enabled on Alibaba Cloud Bailian. Enable at: https://www.aliyun.com/benefit/scene/codingplan" }
     # --- OpenAI-compatible provider creation ---
     "install.openai_compat.missing" = @{ zh = "警告: OpenAI Base URL 或 API Key 未设置，跳过提供商创建"; en = "WARNING: OpenAI Base URL or API Key not set, skipping provider creation" }
     "install.openai_compat.creating" = @{ zh = "正在创建 OpenAI 兼容提供商..."; en = "Creating OpenAI-compatible provider..." }
@@ -691,6 +696,42 @@ function Read-Prompt {
 # ============================================================
 # OpenAI-Compatible Provider
 # ============================================================
+
+function Test-LlmConnectivity {
+    param(
+        [string]$BaseUrl,
+        [string]$ApiKey,
+        [string]$Model,
+        [string]$Hint = ""
+    )
+    Write-Log (Get-Msg "llm.openai.test.testing")
+    $uri = ($BaseUrl.TrimEnd('/')) + "/chat/completions"
+    $body = @{
+        model    = $Model
+        messages = @(@{ role = "user"; content = "hi" })
+        max_tokens = 1
+    } | ConvertTo-Json -Compress
+    try {
+        $response = Invoke-WebRequest -Uri $uri -Method POST `
+            -Headers @{ "Authorization" = "Bearer $ApiKey"; "Content-Type" = "application/json" } `
+            -Body $body -TimeoutSec 30 -ErrorAction Stop -UseBasicParsing
+        Write-Log (Get-Msg "llm.openai.test.ok")
+    } catch {
+        $statusCode = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+        $responseBody = ""
+        if ($_.Exception.Response) {
+            try {
+                $stream = $_.Exception.Response.GetResponseStream()
+                $reader = New-Object System.IO.StreamReader($stream)
+                $responseBody = $reader.ReadToEnd()
+            } catch {}
+        }
+        Write-Host (Get-Msg "llm.openai.test.fail" -f $statusCode, $responseBody) -ForegroundColor Yellow
+        if ($Hint) {
+            Write-Host $Hint -ForegroundColor Yellow
+        }
+    }
+}
 
 function New-OpenAICompatProvider {
     param(
@@ -1312,6 +1353,12 @@ function Install-Manager {
                 Write-Log (Get-Msg "llm.apikey_url")
                 Write-Log ""
                 $config.LLM_API_KEY = Read-Prompt -VarName "HICLAW_LLM_API_KEY" -PromptText (Get-Msg "llm.apikey_prompt") -Secret
+                # Connectivity test
+                if ($modelChoice -match "^(2|qwen)$") {
+                    Test-LlmConnectivity -BaseUrl "https://dashscope.aliyuncs.com/compatible-mode/v1" -ApiKey $config.LLM_API_KEY -Model $config.DEFAULT_MODEL
+                } else {
+                    Test-LlmConnectivity -BaseUrl $config.OPENAI_BASE_URL -ApiKey $config.LLM_API_KEY -Model $config.DEFAULT_MODEL -Hint (Get-Msg "llm.openai.test.fail.codingplan")
+                }
             }
             "^(2|openai-compat)$" {
                 $config.LLM_PROVIDER = "openai-compat"
@@ -1326,6 +1373,7 @@ function Install-Manager {
                 Write-Log (Get-Msg "llm.model.label" -f $config.DEFAULT_MODEL)
                 Write-Log ""
                 $config.LLM_API_KEY = Read-Prompt -VarName "HICLAW_LLM_API_KEY" -PromptText (Get-Msg "llm.apikey_prompt") -Secret
+                Test-LlmConnectivity -BaseUrl $config.OPENAI_BASE_URL -ApiKey $config.LLM_API_KEY -Model $config.DEFAULT_MODEL
             }
             default {
                 Write-Log (Get-Msg "llm.provider.invalid")
@@ -1339,6 +1387,7 @@ function Install-Manager {
                 Write-Log (Get-Msg "llm.apikey_url")
                 Write-Log ""
                 $config.LLM_API_KEY = Read-Prompt -VarName "HICLAW_LLM_API_KEY" -PromptText (Get-Msg "llm.apikey_prompt") -Secret
+                Test-LlmConnectivity -BaseUrl $config.OPENAI_BASE_URL -ApiKey $config.LLM_API_KEY -Model $config.DEFAULT_MODEL -Hint (Get-Msg "llm.openai.test.fail.codingplan")
             }
         }
     }
