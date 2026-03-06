@@ -146,10 +146,10 @@ To see what the agent is actually doing, exec into the Manager or Worker contain
 
 ```bash
 # For Manager
-docker exec -it hiclaw-manager ls /root/.openclaw/agents/main/sessions/
+docker exec -it hiclaw-manager ls .openclaw/agents/main/sessions/
 
 # For a Worker (replace <worker-name> with the actual container name)
-docker exec -it <worker-name> ls /root/.openclaw/agents/main/sessions/
+docker exec -it <worker-name> ls .openclaw/agents/main/sessions/
 ```
 
 The `.jsonl` files in that directory are written by OpenClaw in real time and contain the full agent execution trace — LLM calls, tool use, reasoning steps, etc.
