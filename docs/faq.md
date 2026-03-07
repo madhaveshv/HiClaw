@@ -3,7 +3,7 @@
 - [How to check the current HiClaw version](#how-to-check-the-current-hiclaw-version)
 - [How to connect Feishu/DingTalk/WeCom/Discord/Telegram](#how-to-connect-feishudingtalkwecomdiscordtelegram)
 - [Installation script exits immediately on Windows](#installation-script-exits-immediately-on-windows)
-- [Manager Agent startup timeout](#manager-agent-startup-timeout)
+- [Manager Agent startup timeout or failure](#manager-agent-startup-timeout-or-failure)
 - [Accessing the web UI from other devices on the LAN](#accessing-the-web-ui-from-other-devices-on-the-lan)
 - [Cannot connect to Matrix server locally](#cannot-connect-to-matrix-server-locally)
 - [How to talk to a Worker directly](#how-to-talk-to-a-worker-directly)
@@ -38,9 +38,11 @@ If the PowerShell installation script closes immediately after launching, first 
 
 ---
 
-## Manager Agent startup timeout
+## Manager Agent startup timeout or failure
 
-If the Manager Agent is unresponsive after installation, check the logs inside the container:
+If the Manager Agent is unresponsive after installation
+, or fails to start
+, check the logs inside the container:
 
 ```bash
 docker exec -it hiclaw-manager cat /var/log/hiclaw/manager-agent.log
