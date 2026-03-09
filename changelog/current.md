@@ -8,6 +8,7 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 
 - Added CoPaw Worker container support — new `copaw/Dockerfile`, container lifecycle management (`container_create_copaw_worker`), random host port assignment with auto-retry on conflict, and on-demand web console toggle (`enable-worker-console.sh`, saves ~500MB RAM when disabled).
 - Added CoPaw Worker runtime package (`copaw-worker` CLI) that bridges openclaw.json → CoPaw config, implements MatrixChannel for Matrix communication, syncs config/skills from MinIO, and supports bidirectional file sync (remote→local + local→MinIO push loop).
+- Added CoPaw remote deployment mode (`--runtime copaw --remote`) — installs the Worker directly on the user's local machine via pip, enabling tasks that require local environment access (e.g., opening a browser, running desktop apps, accessing local files). Remote copaw installs auto-include `--console-port 8088` by default.
 - Added worker runtime selection prompt to install scripts — users choose between OpenClaw (~500MB) and CoPaw (~100MB) during installation; default runtime stored in `HICLAW_DEFAULT_WORKER_RUNTIME` env var and used by `create-worker.sh`.
 - Extracted worker model switch into standalone `worker-model-switch` skill.
 - Added AI identity section to SOUL.md and User-Agent header (HiClaw/\<version\>) to AI route.
@@ -26,6 +27,7 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 
 - CoPaw Worker 容器化支持 — 新增 `copaw/Dockerfile`、容器生命周期管理（`container_create_copaw_worker`）、随机 host port 分配与端口冲突自动重试、按需开关 Web 控制台（`enable-worker-console.sh`，关闭时节省约 500MB 内存）。
 - CoPaw Worker 运行时包（`copaw-worker` CLI）— 桥接 openclaw.json 到 CoPaw 配置、实现 MatrixChannel 通信、从 MinIO 同步配置和技能、支持双向文件同步（远程→本地 + 本地→MinIO 推送）。
+- CoPaw 远程部署模式（`--runtime copaw --remote`）— 通过 pip 将 Worker 安装在用户本地机器上，支持需要访问本地环境的任务（如打开浏览器、运行桌面应用、访问本地文件）。远程 copaw 安装命令默认自带 `--console-port 8088`。
 - 安装脚本新增 Worker 运行时选择提示 — 用户在安装时选择 OpenClaw（约 500MB）或 CoPaw（约 100MB），默认运行时存入 `HICLAW_DEFAULT_WORKER_RUNTIME` 环境变量，`create-worker.sh` 自动使用。
 - Worker 模型切换拆分为独立 `worker-model-switch` skill。
 - SOUL.md 新增 AI 身份声明，AI 路由新增 User-Agent 头（HiClaw/\<version\>）。
