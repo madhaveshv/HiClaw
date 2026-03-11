@@ -41,13 +41,13 @@ case "${MODEL_NAME}" in
     claude-haiku-4-5)
         CTX=200000; MAX=64000 ;;
     qwen3.5-plus)
-        CTX=960000; MAX=64000 ;;
+        CTX=200000; MAX=64000 ;;
     deepseek-chat|deepseek-reasoner|kimi-k2.5)
         CTX=256000; MAX=128000 ;;
     glm-5|MiniMax-M2.5)
         CTX=200000; MAX=128000 ;;
     *)
-        CTX=200000; MAX=128000 ;;
+        CTX=150000; MAX=128000 ;;
 esac
 
 # Resolve input modalities: only vision-capable models get "image"

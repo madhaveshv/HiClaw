@@ -119,7 +119,7 @@ Alternatively, you can click the Worker's avatar and open a **direct message** (
 
 **Why use Manager instead of manual config?**
 
-OpenClaw requires setting the model's context window size (`contextWindow`) in its config. HiClaw defaults to qwen3.5-plus's 1M token window. If you switch to a model with a smaller window without updating this setting, the session may fail when approaching the window limit — OpenClaw won't know when to compress context.
+OpenClaw requires setting the model's context window size (`contextWindow`) in its config. HiClaw defaults to qwen3.5-plus's 200K token window. If you switch to a model with a different window without updating this setting, the session may fail when approaching the window limit — OpenClaw won't know when to compress context.
 
 Manager has a built-in **model-switch skill** that:
 1. Looks up the correct `contextWindow` and `maxTokens` for the target model

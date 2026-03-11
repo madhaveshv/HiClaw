@@ -10,18 +10,19 @@ Switch the Manager's own LLM model. The script tests connectivity first, then ho
 ## Usage
 
 ```bash
-bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh <MODEL_ID>
+bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh <MODEL_ID> [--context-window <SIZE>]
 ```
 
-Example:
+Examples:
 ```bash
 bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh claude-sonnet-4-6
+bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh my-custom-model --context-window 300000
 ```
 
 ## What the script does
 
 1. Strips any `hiclaw-gateway/` prefix from the model name
-2. Resolves `contextWindow` and `maxTokens` for the model
+2. Resolves `contextWindow` and `maxTokens` for the model (uses `--context-window` override if provided)
 3. Tests the model via `POST /v1/chat/completions` on the AI Gateway — exits with error if unreachable
 4. Patches `openclaw.json`: updates `models[0].id/name/contextWindow/maxTokens` and `agents.defaults.model.primary`
 
@@ -51,7 +52,18 @@ No changes are made to `openclaw.json` in this case.
 | claude-opus-4-6 | 1,000,000 | 128,000 |
 | claude-sonnet-4-6 | 1,000,000 | 64,000 |
 | claude-haiku-4-5 | 200,000 | 64,000 |
-| qwen3.5-plus | 960,000 | 64,000 |
+| qwen3.5-plus | 200,000 | 64,000 |
 | deepseek-chat / deepseek-reasoner / kimi-k2.5 | 256,000 | 128,000 |
 | glm-5 / MiniMax-M2.5 | 200,000 | 128,000 |
-| *(other)* | 200,000 | 128,000 |
+| *(other)* | 150,000 | 128,000 |
+
+## Switching to an unknown model
+
+When the human admin requests switching to a model **not listed in the table above**, you MUST:
+
+1. **Ask the admin for the model's context window size** before running the script. Example: "This model is not in the known list. What is its context window size (in tokens)?"
+2. Once the admin provides the context window, run the script with `--context-window`:
+   ```bash
+   bash /opt/hiclaw/agent/skills/model-switch/scripts/update-manager-model.sh <MODEL_ID> --context-window <SIZE>
+   ```
+3. If the admin does not know the context window, use the default (150,000) by omitting `--context-window`.

@@ -5,22 +5,39 @@
 # OpenClaw detects the file change (~300ms) and reloads config automatically.
 #
 # Usage:
-#   update-manager-model.sh <MODEL_ID>
+#   update-manager-model.sh <MODEL_ID> [--context-window <SIZE>]
 #
 # Example:
 #   update-manager-model.sh claude-sonnet-4-6
+#   update-manager-model.sh my-custom-model --context-window 300000
 
 set -e
 source /opt/hiclaw/scripts/lib/base.sh
 
 MODEL_NAME="${1:-}"
 if [ -z "${MODEL_NAME}" ]; then
-    echo "Usage: $0 <MODEL_ID>"
+    echo "Usage: $0 <MODEL_ID> [--context-window <SIZE>]"
     echo "Example: $0 claude-sonnet-4-6"
+    echo "         $0 my-custom-model --context-window 300000"
     exit 1
 fi
+shift
 # Strip provider prefix if caller passed "hiclaw-gateway/<model>" by mistake
 MODEL_NAME="${MODEL_NAME#hiclaw-gateway/}"
+
+CTX_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --context-window)
+            CTX_OVERRIDE="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
 
 CONFIG_FILE="${HOME}/manager-workspace/openclaw.json"
 if [ ! -f "${CONFIG_FILE}" ]; then
@@ -45,14 +62,19 @@ case "${MODEL_NAME}" in
     claude-haiku-4-5)
         CTX=200000; MAX=64000 ;;
     qwen3.5-plus)
-        CTX=960000; MAX=64000 ;;
+        CTX=200000; MAX=64000 ;;
     deepseek-chat|deepseek-reasoner|kimi-k2.5)
         CTX=256000; MAX=128000 ;;
     glm-5|MiniMax-M2.5)
         CTX=200000; MAX=128000 ;;
     *)
-        CTX=200000; MAX=128000 ;;
+        CTX=150000; MAX=128000 ;;
 esac
+
+# Allow explicit context-window override (for unknown models)
+if [ -n "${CTX_OVERRIDE:-}" ]; then
+    CTX="${CTX_OVERRIDE}"
+fi
 
 # Resolve input modalities: only vision-capable models get "image"
 case "${MODEL_NAME}" in

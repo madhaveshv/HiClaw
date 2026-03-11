@@ -5,10 +5,11 @@
 # and notifies the Worker via Matrix to reload config.
 #
 # Usage:
-#   update-worker-model.sh --worker <name> --model <model-id>
+#   update-worker-model.sh --worker <name> --model <model-id> [--context-window <size>]
 #
 # Example:
 #   update-worker-model.sh --worker alice --model claude-sonnet-4-6
+#   update-worker-model.sh --worker alice --model my-custom-model --context-window 300000
 
 set -euo pipefail
 
@@ -37,14 +38,18 @@ _resolve_model_params() {
         claude-haiku-4-5)
             CTX=200000; MAX=64000 ;;
         qwen3.5-plus)
-            CTX=960000; MAX=64000 ;;
+            CTX=200000; MAX=64000 ;;
         deepseek-chat|deepseek-reasoner|kimi-k2.5)
             CTX=256000; MAX=128000 ;;
         glm-5|MiniMax-M2.5)
             CTX=200000; MAX=128000 ;;
         *)
-            CTX=200000; MAX=128000 ;;
+            CTX=150000; MAX=128000 ;;
     esac
+    # Allow explicit context-window override (for unknown models)
+    if [ -n "${CTX_OVERRIDE:-}" ]; then
+        CTX="${CTX_OVERRIDE}"
+    fi
     # Resolve input modalities: only vision-capable models get "image"
     case "${model}" in
         gpt-5.4|gpt-5.3-codex|gpt-5-mini|gpt-5-nano|claude-opus-4-6|claude-sonnet-4-6|claude-haiku-4-5|qwen3.5-plus|kimi-k2.5)
@@ -187,6 +192,7 @@ update_worker_model() {
 
 WORKER=""
 MODEL=""
+CTX_OVERRIDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -198,6 +204,10 @@ while [[ $# -gt 0 ]]; do
             MODEL="$2"
             shift 2
             ;;
+        --context-window)
+            CTX_OVERRIDE="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
             exit 1
@@ -206,8 +216,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$WORKER" ] || [ -z "$MODEL" ]; then
-    echo "Usage: $0 --worker <name> --model <model-id>" >&2
+    echo "Usage: $0 --worker <name> --model <model-id> [--context-window <size>]" >&2
     echo "Example: $0 --worker alice --model claude-sonnet-4-6" >&2
+    echo "         $0 --worker alice --model my-custom-model --context-window 300000" >&2
     exit 1
 fi
 

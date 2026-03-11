@@ -11,19 +11,22 @@ Switch a Worker's LLM model. The script tests connectivity first, then patches t
 
 ```bash
 bash /opt/hiclaw/agent/skills/worker-model-switch/scripts/update-worker-model.sh \
-  --worker <WORKER_NAME> --model <MODEL_ID>
+  --worker <WORKER_NAME> --model <MODEL_ID> [--context-window <SIZE>]
 ```
 
-Example:
+Examples:
 ```bash
 bash /opt/hiclaw/agent/skills/worker-model-switch/scripts/update-worker-model.sh \
   --worker alice --model claude-sonnet-4-6
+
+bash /opt/hiclaw/agent/skills/worker-model-switch/scripts/update-worker-model.sh \
+  --worker alice --model my-custom-model --context-window 300000
 ```
 
 ## What the script does
 
 1. Strips any `hiclaw-gateway/` prefix from the model name
-2. Resolves `contextWindow` and `maxTokens` for the model
+2. Resolves `contextWindow` and `maxTokens` for the model (uses `--context-window` override if provided)
 3. Tests the model via `POST /v1/chat/completions` on the AI Gateway — exits with error if unreachable
 4. Pulls the Worker's `openclaw.json` from MinIO
 5. Patches model id, name, contextWindow, maxTokens (preserves all other config)
@@ -55,7 +58,19 @@ No changes are made to `openclaw.json` in this case.
 | claude-opus-4-6 | 1,000,000 | 128,000 |
 | claude-sonnet-4-6 | 1,000,000 | 64,000 |
 | claude-haiku-4-5 | 200,000 | 64,000 |
-| qwen3.5-plus | 960,000 | 64,000 |
+| qwen3.5-plus | 200,000 | 64,000 |
 | deepseek-chat / deepseek-reasoner / kimi-k2.5 | 256,000 | 128,000 |
 | glm-5 / MiniMax-M2.5 | 200,000 | 128,000 |
-| *(other)* | 200,000 | 128,000 |
+| *(other)* | 150,000 | 128,000 |
+
+## Switching to an unknown model
+
+When the human admin requests switching a Worker to a model **not listed in the table above**, you MUST:
+
+1. **Ask the admin for the model's context window size** before running the script. Example: "This model is not in the known list. What is its context window size (in tokens)?"
+2. Once the admin provides the context window, run the script with `--context-window`:
+   ```bash
+   bash /opt/hiclaw/agent/skills/worker-model-switch/scripts/update-worker-model.sh \
+     --worker <WORKER_NAME> --model <MODEL_ID> --context-window <SIZE>
+   ```
+3. If the admin does not know the context window, use the default (150,000) by omitting `--context-window`.

@@ -268,13 +268,13 @@ case "${MODEL_NAME}" in
     claude-haiku-4-5)
         export MODEL_CONTEXT_WINDOW=200000 MODEL_MAX_TOKENS=64000 ;;
     qwen3.5-plus)
-        export MODEL_CONTEXT_WINDOW=960000 MODEL_MAX_TOKENS=64000 ;;
+        export MODEL_CONTEXT_WINDOW=200000 MODEL_MAX_TOKENS=64000 ;;
     deepseek-chat|deepseek-reasoner|kimi-k2.5)
         export MODEL_CONTEXT_WINDOW=256000 MODEL_MAX_TOKENS=128000 ;;
     glm-5|MiniMax-M2.5)
         export MODEL_CONTEXT_WINDOW=200000 MODEL_MAX_TOKENS=128000 ;;
     *)
-        export MODEL_CONTEXT_WINDOW=200000 MODEL_MAX_TOKENS=128000 ;;
+        export MODEL_CONTEXT_WINDOW=150000 MODEL_MAX_TOKENS=128000 ;;
 esac
 export MODEL_REASONING=true
 
