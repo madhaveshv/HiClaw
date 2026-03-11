@@ -420,8 +420,8 @@ msg() {
         "worker_runtime.title.en") text="--- Default Worker Runtime ---" ;;
         "worker_runtime.openclaw.zh") text="OpenClaw（Node.js 容器，~500MB 内存）" ;;
         "worker_runtime.openclaw.en") text="OpenClaw (Node.js container, ~500MB RAM)" ;;
-        "worker_runtime.copaw.zh") text="CoPaw（Python 容器，~100MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）" ;;
-        "worker_runtime.copaw.en") text="CoPaw (Python container, ~100MB RAM, console off by default, enable on demand via Manager)" ;;
+        "worker_runtime.copaw.zh") text="CoPaw（Python 容器，~150MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）" ;;
+        "worker_runtime.copaw.en") text="CoPaw (Python container, ~150MB RAM, console off by default, enable on demand via Manager)" ;;
         "worker_runtime.choice.zh") text="请选择 [1/2]" ;;
         "worker_runtime.choice.en") text="Enter choice [1/2]" ;;
         "worker_runtime.selected.zh") text="默认 Worker 运行时: %s" ;;

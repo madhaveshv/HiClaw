@@ -1,4 +1,4 @@
-# HiClaw 1.0.4: Lightweight CoPaw Workers - 80% Less Memory, Direct Local Environment Access
+# HiClaw 1.0.4: Lightweight CoPaw Workers - Significantly Less Memory, Direct Local Environment Access
 
 > Release Date: March 10, 2026
 
@@ -255,8 +255,8 @@ During installation, you'll be asked which Worker runtime to use as default:
 
 ```
 Select default worker runtime:
-  1) openclaw (~500MB, full-featured)
-  2) copaw (~100MB, lightweight)
+  1) openclaw (~500MB)
+  2) copaw (~150MB, lightweight)
 
 Enter your choice [1-2]:
 ```

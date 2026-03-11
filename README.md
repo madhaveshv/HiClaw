@@ -230,7 +230,7 @@ Feel free to [open an issue](https://github.com/higress-group/hiclaw/issues) or 
 
 Currently, Workers run on OpenClaw which has relatively high memory usage. We plan to support alternative lightweight runtimes:
 
-- **CoPaw** ✅ **[Released in 1.0.4](blog/hiclaw-1.0.4-release.md)** — Lightweight agent runtime by AgentScope. Docker mode uses ~100MB (vs ~500MB for OpenClaw), plus local host mode for browser automation and local file access.
+- **CoPaw** ✅ **[Released in 1.0.4](blog/hiclaw-1.0.4-release.md)** — Lightweight agent runtime by AgentScope. Docker mode uses ~150MB (vs ~500MB for OpenClaw), plus local host mode for browser automation and local file access.
 - **ZeroClaw** — Rust-based ultra-lightweight runtime, 3.4MB binary, <10ms cold start, designed for edge and resource-constrained environments
 - **NanoClaw** — Minimal OpenClaw alternative, <4000 LOC, container-based isolation, built on Anthropic Agents SDK
 

@@ -335,7 +335,7 @@ $script:Messages = @{
     # --- Default worker runtime ---
     "worker_runtime.title" = @{ zh = "--- 默认 Worker 运行时 ---"; en = "--- Default Worker Runtime ---" }
     "worker_runtime.openclaw" = @{ zh = "OpenClaw（Node.js 容器，~500MB 内存）"; en = "OpenClaw (Node.js container, ~500MB RAM)" }
-    "worker_runtime.copaw" = @{ zh = "CoPaw（Python 容器，~100MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）"; en = "CoPaw (Python container, ~100MB RAM, console off by default, enable on demand via Manager)" }
+    "worker_runtime.copaw" = @{ zh = "CoPaw（Python 容器，~150MB 内存，默认关闭控制台，可跟 Manager 对话按需开启）"; en = "CoPaw (Python container, ~150MB RAM, console off by default, enable on demand via Manager)" }
     "worker_runtime.choice" = @{ zh = "请选择 [1/2]"; en = "Enter choice [1/2]" }
     "worker_runtime.selected" = @{ zh = "默认 Worker 运行时: {0}"; en = "Default Worker runtime: {0}" }
 

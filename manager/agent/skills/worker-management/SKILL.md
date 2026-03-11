@@ -92,7 +92,7 @@ Before anything else, determine which runtime to use based on the admin's reques
 **Rules:**
 - If the admin mentions "copaw" anywhere in the request (e.g., "帮我创建一个 copaw"、"create a copaw worker"), use `--runtime copaw`. Do NOT fall through to the default openclaw path.
 - If the admin does not mention any runtime keyword, use `${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}` as the default.
-- When in doubt, ask the admin: "Should this be a copaw (Python, ~100MB RAM) worker or an openclaw (Node.js, ~500MB RAM) worker?"
+- When in doubt, ask the admin: "Should this be a copaw (Python, ~150MB RAM) worker or an openclaw (Node.js, ~500MB RAM) worker?"
 
 ### Step 0.5: Receive configuration from AGENTS.md interaction
 

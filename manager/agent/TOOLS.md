@@ -43,8 +43,8 @@ bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh \
 
 | Runtime | Memory | Description |
 |---------|--------|-------------|
-| `openclaw` | ~500MB | Node.js container, full-featured |
-| `copaw` | ~100MB | Python container, lightweight; console off by default, enable on demand via `enable-worker-console.sh` |
+| `openclaw` | ~500MB | Node.js container |
+| `copaw` | ~150MB | Python container, lightweight; console off by default, enable on demand via `enable-worker-console.sh` |
 
 Default runtime is set by `HICLAW_DEFAULT_WORKER_RUNTIME` (chosen during installation). Only pass `--runtime` explicitly when:
 - The admin requests a specific runtime (e.g., "create a copaw worker" → `--runtime copaw`)
