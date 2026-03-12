@@ -38,12 +38,12 @@ Break the project goal into phases and tasks. For each task identify:
 
 ```bash
 PROJECT_ID="proj-$(date +%Y%m%d-%H%M%S)"
-mkdir -p ~/hiclaw-fs/shared/projects/${PROJECT_ID}
+mkdir -p /root/hiclaw-fs/shared/projects/${PROJECT_ID}
 ```
 
 Write **meta.json**:
 ```bash
-cat > ~/hiclaw-fs/shared/projects/${PROJECT_ID}/meta.json << 'EOF'
+cat > /root/hiclaw-fs/shared/projects/${PROJECT_ID}/meta.json << 'EOF'
 {
   "project_id": "proj-YYYYMMDD-HHMMSS",
   "title": "<project title>",
@@ -58,7 +58,7 @@ EOF
 
 Write **plan.md** (see format below):
 ```bash
-cat > ~/hiclaw-fs/shared/projects/${PROJECT_ID}/plan.md << 'EOF'
+cat > /root/hiclaw-fs/shared/projects/${PROJECT_ID}/plan.md << 'EOF'
 ...plan content...
 EOF
 ```
@@ -68,7 +68,7 @@ EOF
 Use the `create-project.sh` script — it creates the room, invites all participants, and updates `openclaw.json` `groupAllowFrom` so Worker @mentions in the project room trigger you:
 
 ```bash
-bash ~/hiclaw-fs/agents/manager/skills/project-management/scripts/create-project.sh \
+bash /opt/hiclaw/agent/skills/project-management/scripts/create-project.sh \
   --id "${PROJECT_ID}" \
   --title "<title>" \
   --workers "worker1,worker2,worker3"
@@ -97,7 +97,7 @@ Wait for human confirmation before proceeding.
 ### 1e. After confirmation
 
 1. Update meta.json: `"status": "planning" → "active"`, set `confirmed_at`
-2. Sync to MinIO: `mc mirror ~/hiclaw-fs/shared/projects/${PROJECT_ID}/ hiclaw/hiclaw-storage/shared/projects/${PROJECT_ID}/ --overwrite`
+2. Sync to MinIO: `mc mirror /root/hiclaw-fs/shared/projects/${PROJECT_ID}/ hiclaw/hiclaw-storage/shared/projects/${PROJECT_ID}/ --overwrite`
 3. Verify the human admin is in the project room — if not, invite them immediately:
    ```bash
    curl -X POST "http://127.0.0.1:6167/_matrix/client/v3/rooms/${ROOM_ID}/invite" \
@@ -132,14 +132,14 @@ Wait for human confirmation before proceeding.
 ### Phase 1: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain})
-  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
-  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+  - Spec: /root/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: /root/hiclaw-fs/shared/tasks/{task-id}/result.md
 
 ### Phase 2: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain}, depends on: {task-id})
-  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
-  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+  - Spec: /root/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: /root/hiclaw-fs/shared/tasks/{task-id}/result.md
 
 ## Change Log
 
@@ -175,14 +175,14 @@ Wait for human confirmation before proceeding.
 ### Phase 1: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain})
-  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
-  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+  - Spec: /root/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: /root/hiclaw-fs/shared/tasks/{task-id}/result.md
 
 ### Phase 2: {phase name}
 
 - [ ] {task-id} — {task title} (assigned: @{worker}:{domain}, depends on: {task-id})
-  - Spec: ~/hiclaw-fs/shared/tasks/{task-id}/spec.md
-  - Result: ~/hiclaw-fs/shared/tasks/{task-id}/result.md
+  - Spec: /root/hiclaw-fs/shared/tasks/{task-id}/spec.md
+  - Result: /root/hiclaw-fs/shared/tasks/{task-id}/result.md
   - **On REVISION_NEEDED**: return to {task-id} | reassign to @{worker}
 
 ## Change Log
@@ -260,7 +260,7 @@ All Workers should use this format when writing task results:
 
 ## Context
 
-- Project plan: ~/hiclaw-fs/shared/projects/<project-id>/plan.md
+- Project plan: /root/hiclaw-fs/shared/projects/<project-id>/plan.md
 - <any relevant prior task results or links>
 
 ## Notes
@@ -269,19 +269,19 @@ All Workers should use this format when writing task results:
 
 ## Task Directory Convention
 
-All your work for this task must stay in `~/hiclaw-fs/shared/tasks/<task-id>/`:
+All your work for this task must stay in `/root/hiclaw-fs/shared/tasks/<task-id>/`:
 - Create `plan.md` **before starting** (your step-by-step execution plan)
 - Store all intermediate artifacts here (code drafts, notes, tool outputs)
 - Write `result.md` when done
-- Push everything with: `mc mirror ~/hiclaw-fs/shared/tasks/<task-id>/ hiclaw/hiclaw-storage/shared/tasks/<task-id>/ --overwrite --exclude "spec.md" --exclude "base/"` (spec.md and base/ are Manager-owned, do not overwrite them)
+- Push everything with: `mc mirror /root/hiclaw-fs/shared/tasks/<task-id>/ hiclaw/hiclaw-storage/shared/tasks/<task-id>/ --overwrite --exclude "spec.md" --exclude "base/"` (spec.md and base/ are Manager-owned, do not overwrite them)
 EOF
 ```
 
 ### 2b. Sync to MinIO
 
 ```bash
-mc cp ~/hiclaw-fs/shared/tasks/${TASK_ID}/meta.json hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/meta.json
-mc cp ~/hiclaw-fs/shared/tasks/${TASK_ID}/spec.md hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/spec.md
+mc cp /root/hiclaw-fs/shared/tasks/${TASK_ID}/meta.json hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/meta.json
+mc cp /root/hiclaw-fs/shared/tasks/${TASK_ID}/spec.md hiclaw/hiclaw-storage/shared/tasks/${TASK_ID}/spec.md
 ```
 
 ### 2c. Update plan.md
@@ -313,7 +313,7 @@ When a Worker @mentions you with a task completion in the project room:
 **First, read the task's `result.md` file** and extract the outcome:
 
 ```bash
-RESULT_FILE="~/hiclaw-fs/shared/tasks/${TASK_ID}/result.md"
+RESULT_FILE="/root/hiclaw-fs/shared/tasks/${TASK_ID}/result.md"
 
 # Look for the Outcome section
 if grep -q "Status:.*REVISION_NEEDED" "$RESULT_FILE" 2>/dev/null; then
@@ -361,9 +361,9 @@ ORIGINAL_TASK_ID="<task-reporting-revision>"
 TARGET_TASK_ID="<task-to-revise>"
 REVISION_AUTHOR="<worker-who-will-revise>"
 
-mkdir -p ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}
+mkdir -p /root/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}
 
-cat > ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/meta.json << EOF
+cat > /root/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/meta.json << EOF
 {
   "task_id": "${REVISION_TASK_ID}",
   "project_id": "<project-id>",
@@ -382,7 +382,7 @@ EOF
 4. **Create spec.md** referencing what needs revision:
 
 ```bash
-cat > ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/spec.md << EOF
+cat > /root/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/spec.md << EOF
 # Task: Revision Required
 
 **Task ID**: ${REVISION_TASK_ID}
@@ -394,7 +394,7 @@ cat > ~/hiclaw-fs/shared/tasks/${REVISION_TASK_ID}/spec.md << EOF
 
 Task ${ORIGINAL_TASK_ID} has identified issues that require revision of earlier work.
 
-**Review/Feedback source**: ~/hiclaw-fs/shared/tasks/${ORIGINAL_TASK_ID}/result.md
+**Review/Feedback source**: /root/hiclaw-fs/shared/tasks/${ORIGINAL_TASK_ID}/result.md
 
 ## What Needs Revision
 
@@ -403,7 +403,7 @@ Task ${ORIGINAL_TASK_ID} has identified issues that require revision of earlier 
 ## Original Task Reference
 
 Original task: ${TARGET_TASK_ID}
-Spec: ~/hiclaw-fs/shared/tasks/${TARGET_TASK_ID}/spec.md
+Spec: /root/hiclaw-fs/shared/tasks/${TARGET_TASK_ID}/spec.md
 
 ## Deliverables
 
@@ -478,7 +478,7 @@ Assign the next task to the same Worker immediately (Step 2). The Worker is avai
 所有任务已全部交付：
 {list of completed tasks with one-line summary}
 
-项目文档：~/hiclaw-fs/shared/projects/{project-id}/plan.md
+项目文档：/root/hiclaw-fs/shared/projects/{project-id}/plan.md
 ```
 
 5. Update `memory/YYYY-MM-DD.md` with project outcome
@@ -536,8 +536,8 @@ curl -X POST "http://127.0.0.1:6167/_matrix/client/v3/rooms/${ROOM_ID}/invite" \
 Also add to manager's `groupAllowFrom`:
 ```bash
 jq --arg w "@<new-worker>:<domain>" '.channels.matrix.groupAllowFrom += [$w]' \
-  ~/hiclaw-fs/agents/manager/openclaw.json > /tmp/cfg.json && mv /tmp/cfg.json ~/hiclaw-fs/agents/manager/openclaw.json
-mc cp ~/hiclaw-fs/agents/manager/openclaw.json hiclaw/hiclaw-storage/agents/manager/openclaw.json
+  ~/openclaw.json > /tmp/cfg.json && mv /tmp/cfg.json ~/openclaw.json
+mc cp ~/openclaw.json hiclaw/hiclaw-storage/agents/manager/openclaw.json
 ```
 
 ### 6b. Send onboarding message in project room
@@ -598,12 +598,12 @@ After human approval, use the worker-management skill to create the Worker.
 During heartbeat, for each active project:
 
 ```bash
-for meta in ~/hiclaw-fs/shared/projects/*/meta.json; do
+for meta in /root/hiclaw-fs/shared/projects/*/meta.json; do
   status=$(jq -r '.status' "$meta")
   [ "$status" != "active" ] && continue
   project_id=$(jq -r '.project_id' "$meta")
   room_id=$(jq -r '.project_room_id' "$meta")
-  plan="~/hiclaw-fs/shared/projects/${project_id}/plan.md"
+  plan="/root/hiclaw-fs/shared/projects/${project_id}/plan.md"
   # Check for [~] tasks (in-progress)
   # For each in-progress task, check if the assigned Worker has sent an @mention recently
   # If no activity in the last heartbeat cycle: @mention the Worker asking for update

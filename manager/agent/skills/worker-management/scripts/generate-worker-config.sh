@@ -5,7 +5,7 @@
 #   generate-worker-config.sh <WORKER_NAME> <MATRIX_TOKEN> <GATEWAY_KEY> [MODEL_ID]
 #
 # Reads env vars: HICLAW_MATRIX_DOMAIN, HICLAW_AI_GATEWAY_DOMAIN, HICLAW_ADMIN_USER, HICLAW_DEFAULT_MODEL
-# Output: ~/hiclaw-fs/agents/<WORKER_NAME>/openclaw.json
+# Output: /root/hiclaw-fs/agents/<WORKER_NAME>/openclaw.json
 
 set -e
 source /opt/hiclaw/scripts/lib/base.sh

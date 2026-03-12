@@ -23,7 +23,7 @@ When a Worker sends a message containing `git-request:`:
 
 ```
 task-{task-id} git-request:
-workspace: ~/hiclaw-fs/shared/tasks/{task-id}/workspace/{repo-name}
+workspace: /root/hiclaw-fs/shared/tasks/{task-id}/workspace/{repo-name}
 operations:
   - git clone https://github.com/org/repo.git
   - git checkout -b feature-auth

@@ -9,7 +9,7 @@
 #   create-worker.sh --name <NAME> [--model <MODEL_ID>] [--mcp-servers s1,s2] [--skills s1,s2] [--find-skills] [--skills-api-url <URL>] [--remote]
 #
 # Prerequisites:
-#   - SOUL.md must already exist at ~/hiclaw-fs/agents/<NAME>/SOUL.md
+#   - SOUL.md must already exist at /root/hiclaw-fs/agents/<NAME>/SOUL.md
 #   - Environment: HICLAW_REGISTRATION_TOKEN, HICLAW_MATRIX_DOMAIN,
 #     HICLAW_AI_GATEWAY_DOMAIN, HICLAW_ADMIN_USER, HIGRESS_COOKIE_FILE,
 #     MANAGER_MATRIX_TOKEN
@@ -73,8 +73,8 @@ if [ ! -f "${SOUL_FILE}" ]; then
     cat << EOF
 {"error": "SOUL.md not found at ${SOUL_FILE}", "hint": "Create it first with:"}
 ---HINT---
-mkdir -p ~/hiclaw-fs/agents/${WORKER_NAME}
-cat > ~/hiclaw-fs/agents/${WORKER_NAME}/SOUL.md << 'SOULEOF'
+mkdir -p /root/hiclaw-fs/agents/${WORKER_NAME}
+cat > /root/hiclaw-fs/agents/${WORKER_NAME}/SOUL.md << 'SOULEOF'
 # ${WORKER_NAME} - Worker Agent
 
 ## AI Identity

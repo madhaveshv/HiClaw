@@ -39,7 +39,7 @@ git clone <repo-url> "$workspace"
 cp -r /path/to/source "$workspace/"
 ```
 
-**Constraint**: The workspace path **must** be under `~/hiclaw-fs/`. The Manager accesses the same path via MinIO mirror.
+**Constraint**: The workspace path **must** be under `/root/hiclaw-fs/`. The Manager accesses the same path via MinIO mirror.
 
 ### 2. Push Workspace to MinIO
 
@@ -103,15 +103,15 @@ Send in your Worker Room (or Project Room, wherever the task was assigned):
 
 ```
 @manager:DOMAIN task-{task-id} coding-request:
-workspace: ~/hiclaw-fs/shared/tasks/{task-id}/workspace
+workspace: /root/hiclaw-fs/shared/tasks/{task-id}/workspace
 ---PROMPT---
 {your detailed coding prompt here}
 ---END---
 ```
 
-Note: `workspace` can be any subdirectory under `~/hiclaw-fs/`, e.g. a cloned git repo:
+Note: `workspace` can be any subdirectory under `/root/hiclaw-fs/`, e.g. a cloned git repo:
 ```
-workspace: ~/hiclaw-fs/shared/tasks/{task-id}/workspace/my-repo
+workspace: /root/hiclaw-fs/shared/tasks/{task-id}/workspace/my-repo
 ```
 
 ### 5. Wait for Manager's Response
@@ -127,7 +127,7 @@ CLI 工具已完成编码。请同步工作目录并 review 变更...
 **Failure** — `coding-failed:`
 ```
 @{your-name}:DOMAIN task-{task-id} coding-failed:
-CLI 工具执行失败...你生成的提示词已保存于：~/hiclaw-fs/shared/tasks/{task-id}/coding-prompts/
+CLI 工具执行失败...你生成的提示词已保存于：/root/hiclaw-fs/shared/tasks/{task-id}/coding-prompts/
 ```
 
 ### 6a. On `coding-result:`
@@ -137,7 +137,7 @@ CLI 工具执行失败...你生成的提示词已保存于：~/hiclaw-fs/shared/
 bash /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh
 
 # Review what changed
-cd ~/hiclaw-fs/shared/tasks/{task-id}/workspace
+cd /root/hiclaw-fs/shared/tasks/{task-id}/workspace
 git diff  # if it's a git repo
 # or: check coding-cli-logs/ for CLI output
 ```

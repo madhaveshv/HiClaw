@@ -10,8 +10,8 @@ Each skill has a full `SKILL.md` in `skills/<name>/`. This file is your cheat sh
 
 ```bash
 # Step 1: Create worker directory and SOUL.md
-mkdir -p ~/hiclaw-fs/agents/<NAME>
-cat > ~/hiclaw-fs/agents/<NAME>/SOUL.md << 'EOF'
+mkdir -p /root/hiclaw-fs/agents/<NAME>
+cat > /root/hiclaw-fs/agents/<NAME>/SOUL.md << 'EOF'
 # <NAME> - Worker Agent
 
 ## AI Identity
@@ -56,8 +56,8 @@ Default runtime is set by `HICLAW_DEFAULT_WORKER_RUNTIME` (chosen during install
 
 | Worker Type | Skills | Flags |
 |-------------|--------|-------|
-| Development (coding, DevOps, review) | `coding-cli,github-operations,git-delegation` | `--find-skills` |
-| Data / Analysis | `coding-cli` | `--find-skills` |
+| Development (coding, DevOps, review) | `github-operations,git-delegation` | `--find-skills` |
+| Data / Analysis | _(default)_ | `--find-skills` |
 | General Purpose | _(default)_ | `--find-skills` |
 
 > `file-sync` is always auto-included. `--find-skills` lets the Worker discover and install additional skills on-demand. Trim skills that clearly don't apply (e.g., drop `github-operations` for a pure frontend worker).
@@ -76,8 +76,8 @@ Assign, track, and complete tasks for Workers.
 
 Must wrap any shared task directory modification.
 
-- About to run git-delegation or coding-cli → use this first to check/create `.processing` marker
-- Git or CLI work completes → use this to remove the marker and sync to MinIO
+- About to run git-delegation → use this first to check/create `.processing` marker
+- Git work completes → use this to remove the marker and sync to MinIO
 
 ## git-delegation-management
 

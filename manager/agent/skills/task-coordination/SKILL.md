@@ -9,7 +9,7 @@ This skill provides a general coordination mechanism for shared task directories
 
 ## Problem
 
-When a Worker delegates work to Manager (coding-cli, git operations), the Manager modifies the Worker's workspace. During this time, the Worker might also be modifying files, causing potential conflicts.
+When a Worker delegates work to Manager (e.g., git operations), the Manager modifies the Worker's workspace. During this time, the Worker might also be modifying files, causing potential conflicts.
 
 ## Solution
 
@@ -138,8 +138,7 @@ bash /opt/hiclaw/agent/skills/task-coordination/scripts/remove-processing-marker
 This coordination mechanism is used by:
 
 1. **git-delegation-management**: Manager creates marker before git ops, removes after
-2. **coding-cli** (Worker skill): Worker checks marker before modifying workspace
-3. **git-delegation** (Worker skill): Worker checks marker before modifying workspace
+2. **git-delegation** (Worker skill): Worker checks marker before modifying workspace
 
 ---
 

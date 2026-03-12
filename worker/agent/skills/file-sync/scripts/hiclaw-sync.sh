@@ -1,7 +1,7 @@
 #!/bin/sh
 # hiclaw-sync.sh - Pull latest config from centralized storage
 # Called by the Worker agent when Manager notifies of config updates.
-# Uses ~/hiclaw-fs/ layout matching Manager's directory structure.
+# Uses /root/hiclaw-fs/ layout — same absolute path as the Manager's MinIO mirror.
 
 WORKER_NAME="${HICLAW_WORKER_NAME:?HICLAW_WORKER_NAME is required}"
 HICLAW_ROOT="/root/hiclaw-fs"

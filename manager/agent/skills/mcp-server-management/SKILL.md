@@ -250,7 +250,7 @@ To update tool-level permissions, modify the `allowTools` section in the YAML an
 When granting a Worker access to MCP servers, you also need to create a `mcporter-servers.json` config file so the Worker's agent runtime knows how to connect. Write this file to MinIO:
 
 ```bash
-cat > ~/hiclaw-fs/agents/<WORKER_NAME>/mcporter-servers.json <<'EOF'
+cat > /root/hiclaw-fs/agents/<WORKER_NAME>/mcporter-servers.json <<'EOF'
 {
   "mcpServers": {
     "mcp-github": {

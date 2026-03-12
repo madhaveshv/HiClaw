@@ -64,7 +64,7 @@ When `coding-cli-config.json` has `enabled: true`:
 
 1. **Ensure the Worker has the `coding-cli` skill.** Check `workers-registry.json`:
    ```bash
-   cat ~/hiclaw-fs/agents/manager/workers-registry.json | jq '.workers[] | select(.name=="<worker>") | .skills'
+   cat ~/workers-registry.json | jq '.workers[] | select(.name=="<worker>") | .skills'
    ```
    If `coding-cli` is missing, distribute it:
    ```bash
@@ -83,7 +83,7 @@ When a Worker sends a message containing `coding-request:` (in their Worker Room
 **Parse the message:**
 ```
 task-{task-id} coding-request:
-workspace: ~/hiclaw-fs/shared/tasks/{task-id}/workspace
+workspace: /root/hiclaw-fs/shared/tasks/{task-id}/workspace
 ---PROMPT---
 {prompt content}
 ---END---
@@ -142,7 +142,7 @@ fi
 @{worker}:DOMAIN task-{task-id} coding-result:
 CLI 工具已完成编码。请同步工作目录并 review 变更：
   bash /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh
-变更记录：~/hiclaw-fs/shared/tasks/{task-id}/workspace/coding-cli-logs/
+变更记录：/root/hiclaw-fs/shared/tasks/{task-id}/workspace/coding-cli-logs/
 ```
 
 **On failure** (exit ≠ 0 or timeout) — see Step 4.
@@ -155,7 +155,7 @@ CLI 工具已完成编码。请同步工作目录并 review 变更：
 ```
 @{worker}:DOMAIN task-{task-id} coding-failed:
 CLI 工具执行失败（exit code: {code}）。请自行完成编码任务。
-你生成的提示词已保存于：~/hiclaw-fs/shared/tasks/{task-id}/coding-prompts/
+你生成的提示词已保存于：/root/hiclaw-fs/shared/tasks/{task-id}/coding-prompts/
 ```
 
 **Notify Human Admin** via escalate-to-admin.sh or primary channel:
@@ -189,8 +189,8 @@ Append to the end of spec.md when CLI mode is enabled:
 
 本任务涉及代码修改。请使用 **Coding CLI 委托模式** 完成：
 
-1. 克隆/准备代码到工作目录：`~/hiclaw-fs/shared/tasks/{task-id}/workspace/`
-2. 推送到 MinIO：`mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/workspace/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/workspace/`
+1. 克隆/准备代码到工作目录：`/root/hiclaw-fs/shared/tasks/{task-id}/workspace/`
+2. 推送到 MinIO：`mc mirror /root/hiclaw-fs/shared/tasks/{task-id}/workspace/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/workspace/`
 3. 根据你的理解和 `coding-cli` skill 生成编码提示词，发送给我
 4. 等待我执行 CLI 工具并返回结果
 5. Sync 拉取变更：`bash /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh`

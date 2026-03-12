@@ -9,8 +9,8 @@ description: Manage the full lifecycle of Worker Agents (create, configure, moni
 
 ```bash
 # Step 1: Create SOUL.md (REQUIRED before running create script)
-mkdir -p ~/hiclaw-fs/agents/<NAME>
-cat > ~/hiclaw-fs/agents/<NAME>/SOUL.md << 'EOF'
+mkdir -p /root/hiclaw-fs/agents/<NAME>
+cat > /root/hiclaw-fs/agents/<NAME>/SOUL.md << 'EOF'
 # <NAME> - Worker Agent
 
 ## AI Identity
@@ -47,8 +47,8 @@ bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh \
 
 | Worker Type | Skills | Flags |
 |-------------|--------|-------|
-| Development (coding, DevOps, review) | `coding-cli,github-operations,git-delegation` | `--find-skills` |
-| Data / Analysis | `coding-cli` | `--find-skills` |
+| Development (coding, DevOps, review) | `github-operations,git-delegation` | `--find-skills` |
+| Data / Analysis | _(default)_ | `--find-skills` |
 | General Purpose | _(default)_ | `--find-skills` |
 
 > `file-sync` is auto-included. `--find-skills` lets the Worker discover additional skills on-demand. Trim skills that clearly don't apply.
@@ -108,8 +108,8 @@ These are determined during the Task Workflow Step 0 / Step 4 interaction in AGE
 Write the Worker's identity file based on the human admin's description. **Must include the AI identity section**:
 
 ```bash
-mkdir -p ~/hiclaw-fs/agents/<WORKER_NAME>
-cat > ~/hiclaw-fs/agents/<WORKER_NAME>/SOUL.md << 'EOF'
+mkdir -p /root/hiclaw-fs/agents/<WORKER_NAME>
+cat > /root/hiclaw-fs/agents/<WORKER_NAME>/SOUL.md << 'EOF'
 # Worker Agent - <WORKER_NAME>
 
 ## AI Identity
@@ -251,7 +251,7 @@ Note: By default, Workers can only be @mentioned by you (Manager) and the human 
 
 The heartbeat prompt triggers automatically. When it fires:
 
-1. Scan `~/hiclaw-fs/shared/tasks/*/meta.json` to find all tasks with `"status": "assigned"`
+1. Scan `/root/hiclaw-fs/shared/tasks/*/meta.json` to find all tasks with `"status": "assigned"`
 2. For each in-progress task, read `assigned_to` and `room_id` from its meta.json
 3. Ask the assigned Worker for status in their Room
 4. If a Worker confirms completion, update the task's meta.json: `"status": "completed"`, fill in `completed_at`
@@ -261,7 +261,7 @@ The heartbeat prompt triggers automatically. When it fires:
 
 ```bash
 # List all in-progress tasks with their assigned Workers:
-for meta in ~/hiclaw-fs/shared/tasks/*/meta.json; do
+for meta in /root/hiclaw-fs/shared/tasks/*/meta.json; do
   jq -r '[.task_id, .assigned_to, .status] | @tsv' "$meta"
 done
 
@@ -372,7 +372,7 @@ This script:
 1. Revoke the Worker's Higress Consumer (or update credentials)
 2. Remove Worker from AI route auth configs (`/v1/ai/routes` — GET, remove from allowedConsumers, PUT)
 3. Remove Worker from MCP Server consumer lists (`/v1/mcpServer/consumers`)
-4. Delete Worker's config directory: `rm -rf ~/hiclaw-fs/agents/<WORKER_NAME>/`
+4. Delete Worker's config directory: `rm -rf /root/hiclaw-fs/agents/<WORKER_NAME>/`
 5. Re-create: write a new SOUL.md and run `create-worker.sh` again (the script handles re-registration gracefully)
 
 ## Manage Worker Skills

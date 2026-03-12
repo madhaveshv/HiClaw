@@ -2,10 +2,10 @@
 
 This workspace is your home. Everything you need is here — config, skills, memory, and task files.
 
-Your workspace root is `~/hiclaw-fs/`, which mirrors the same layout as the Manager. This means paths like `~/hiclaw-fs/shared/tasks/` are consistent across all agents — when someone mentions a path, it means the same location for everyone.
+Your home directory (`~/`) is your agent workspace — SOUL.md, openclaw.json, memory/, skills/ all live here. Shared files live at `/root/hiclaw-fs/shared/`.
 
-- **Your agent files:** `~/hiclaw-fs/agents/<your-name>/` (SOUL.md, openclaw.json, memory/, skills/)
-- **Shared space:** `~/hiclaw-fs/shared/` (tasks, knowledge, collaboration data)
+- **Your agent files:** `~/` (SOUL.md, openclaw.json, memory/, skills/)
+- **Shared space:** `/root/hiclaw-fs/shared/` (tasks, knowledge, collaboration data)
 
 ## Every Session
 
@@ -37,7 +37,7 @@ You wake up fresh each session. Files are your continuity:
 Manager 根据你的职责为你配置了相应的 skills。运行以下命令查看你的可用 skills：
 
 ```bash
-ls ~/hiclaw-fs/agents/<your-name>/skills/
+ls ~/skills/
 ```
 
 每个 skill 目录下有 `SKILL.md`，说明使用方式。
@@ -144,13 +144,13 @@ This pulls the latest files from centralized storage. OpenClaw auto-detects conf
 When you receive a task from the Manager:
 
 1. Sync files first: `bash /opt/hiclaw/agent/skills/file-sync/scripts/hiclaw-sync.sh`
-2. Read the task spec at the path provided (usually `~/hiclaw-fs/shared/tasks/{task-id}/spec.md`)
+2. Read the task spec at the path provided (usually `/root/hiclaw-fs/shared/tasks/{task-id}/spec.md`)
 3. **Create `plan.md` in the task directory** before starting work (see Task Directory Rules below)
 4. Execute the task using your skills and tools, keeping all intermediate artifacts in the task directory
 5. Write results and push all task files to shared storage:
    ```bash
    # Push plan.md, result.md and all intermediate artifacts (exclude spec.md and base/, which are Manager-owned)
-   mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
+   mc mirror /root/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
    ```
 6. **@mention Manager** in the Room (Worker Room or Project Room, wherever the task was assigned) with a completion report
 7. Log key decisions and outcomes to `memory/YYYY-MM-DD.md`
@@ -161,7 +161,7 @@ When you receive a task from the Manager:
 ```
 Do not write `result.md`. Instead, write a timestamped artifact file (e.g., `run-YYYYMMDD-HHMMSS.md`) for each execution.
 
-**Important**: `~/hiclaw-fs/shared/` is pulled from centralized storage periodically and on-demand. When writing results that others need, always use `mc cp` or `mc mirror` to push explicitly to `hiclaw/hiclaw-storage/shared/...`.
+**Important**: `/root/hiclaw-fs/shared/` is pulled from centralized storage periodically and on-demand. When writing results that others need, always use `mc cp` or `mc mirror` to push explicitly to `hiclaw/hiclaw-storage/shared/...`.
 
 If you're blocked, say so immediately via @mention to Manager — don't wait for the Manager to ask.
 
@@ -169,7 +169,7 @@ If you're blocked, say so immediately via @mention to Manager — don't wait for
 
 ## Task Directory Rules
 
-Every task has a dedicated directory: `~/hiclaw-fs/shared/tasks/{task-id}/`
+Every task has a dedicated directory: `/root/hiclaw-fs/shared/tasks/{task-id}/`
 
 **Required files** (must be present before marking a task complete):
 
@@ -215,7 +215,7 @@ Create this at the start of each task, before doing any work:
 
 Push the entire task directory to MinIO after each step completion so all artifacts, progress logs, and plan updates are visible in real time:
 ```bash
-mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
+mc mirror /root/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
 ```
 
 ## Project Participation
@@ -223,7 +223,7 @@ mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks
 When you are part of a project (invited to a Project Room), additional context is in:
 
 ```
-~/hiclaw-fs/shared/projects/{project-id}/plan.md
+/root/hiclaw-fs/shared/projects/{project-id}/plan.md
 ```
 
 Sync first to get the latest plan:
@@ -254,7 +254,7 @@ Session resets are normal — your conversation history may be wiped after 2 day
 After every meaningful action (completing a sub-step, hitting a problem, making a decision), append to the daily progress log **immediately** — don't wait until the end of the day:
 
 ```
-~/hiclaw-fs/shared/tasks/{task-id}/progress/YYYY-MM-DD.md
+/root/hiclaw-fs/shared/tasks/{task-id}/progress/YYYY-MM-DD.md
 ```
 
 Format (append, don't overwrite):
@@ -270,7 +270,7 @@ Format (append, don't overwrite):
 
 Push the entire task directory after each update:
 ```bash
-mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
+mc mirror /root/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks/{task-id}/ --overwrite --exclude "spec.md" --exclude "base/"
 ```
 
 ### Task History (LRU Top 10)
@@ -278,7 +278,7 @@ mc mirror ~/hiclaw-fs/shared/tasks/{task-id}/ hiclaw/hiclaw-storage/shared/tasks
 Maintain a local task history file:
 
 ```
-~/hiclaw-fs/agents/{your-name}/task-history.json
+~/task-history.json
 ```
 
 Structure:
@@ -290,7 +290,7 @@ Structure:
       "task_id": "task-20260221-100000",
       "brief": "One-line description of the task",
       "status": "in_progress",
-      "task_dir": "~/hiclaw-fs/shared/tasks/task-20260221-100000",
+      "task_dir": "/root/hiclaw-fs/shared/tasks/task-20260221-100000",
       "last_worked_on": "2026-02-21T15:00:00Z"
     }
   ]
@@ -299,7 +299,7 @@ Structure:
 
 Rules:
 - **When assigned a new task**: add it to the head of `recent_tasks`
-- **When `recent_tasks` exceeds 10 entries**: move the oldest entry to `~/hiclaw-fs/agents/{your-name}/history-tasks/{task-id}.json` and remove it from `recent_tasks`
+- **When `recent_tasks` exceeds 10 entries**: move the oldest entry to `~/history-tasks/{task-id}.json` and remove it from `recent_tasks`
 - **When task status changes** (in_progress → completed/blocked): update the `status` field in `recent_tasks`
 
 ### Resume Flow
@@ -310,12 +310,6 @@ When the Manager or Human Admin asks you to resume a task after a session reset:
 2. Get the `task_dir` from the entry
 3. Read `{task_dir}/spec.md`, `{task_dir}/plan.md`, and recent files in `{task_dir}/progress/` (latest dates first)
 4. Continue work and append to today's `progress/YYYY-MM-DD.md`
-
-## Coding CLI Mode
-
-When `spec.md` contains a `## Coding CLI Mode` section, do not write code yourself — use the **coding-cli** skill.
-
-Full guidance: `cat ~/hiclaw-fs/agents/<your-name>/skills/coding-cli/SKILL.md`
 
 ## Safety
 

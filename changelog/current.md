@@ -4,6 +4,7 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 
 ---
 
+- fix(manager,worker): replace all `~/hiclaw-fs/` tilde-paths with correct absolute paths (`/root/hiclaw-fs/` for shared data, `~/` for worker's own agent dir) in AGENTS.md, TOOLS.md, all SKILL.md files, and scripts — Manager container sets `HOME=/root/manager-workspace`, so `~/hiclaw-fs/` was expanding to the wrong location
 - fix(manager): allow unstable room versions in Tuwunel to fix room version 11 error
 - feat(manager): reduce default context windows (qwen3.5-plus: 960k→200k, unknown models: 200k→150k) and support `--context-window` override for unknown models in model-switch skills
 - feat(manager): switch group session reset from idle (2880min) to daily at 04:00, matching DM sessions; remove keepalive mechanism (session-keepalive.sh, notify-admin-keepalive.sh, HEARTBEAT step 7, AGENTS.md keepalive response section)
@@ -13,3 +14,5 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 - refactor(manager): move higress-gateway-management and coding-cli-management skills to skills-alpha/ so they are not auto-loaded by Manager; update references in TOOLS.md, docs, and task-coordination SKILL.md
 - feat(manager): unify "Be Responsive but Not Noisy" and "Incoming Message Format" sections across Manager, OpenClaw Worker, and CoPaw Worker AGENTS.md; add missing behavioral sections (task execution, task directory rules, progress tracking, project participation, etc.) to CoPaw Worker AGENTS.md for parity with OpenClaw Worker
 - fix(manager): set proper Matrix room power levels — Admin and Manager get power level 100 (admin), Workers default to 0 (regular user); switch from `trusted_private_chat` to `private_chat` preset with `power_level_content_override` in create-worker.sh, create-project.sh, and matrix-server-management SKILL.md
+- fix(manager): add `state.json` initialization and `manage-state.sh` script to fix state.json never being created — add template + startup init in `upgrade-builtins.sh` and `lifecycle-worker.sh`; replace manual jq edits with atomic script calls (add-finite/add-infinite/complete/executed/list) in task-management SKILL.md and HEARTBEAT.md; add `title` field to each task entry for quick identification
+- refactor(manager,worker): move coding-cli worker skill to skills-alpha/worker-skills/ since it depends on the alpha coding-cli-management skill; remove coding-cli references from worker-management SKILL.md, TOOLS.md, task-coordination SKILL.md, and Worker AGENTS.md files
