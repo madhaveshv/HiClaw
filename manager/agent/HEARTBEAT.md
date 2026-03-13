@@ -135,10 +135,11 @@ If the output is `available`, proceed with the following steps:
      message: Worker <name> container has been automatically paused due to idle timeout. It will be automatically resumed when a task is assigned.
      ```
 
-3. If a Worker has a running finite task but its container status is stopped (anomaly), start it and send an alert to the admin (see Step 7):
+3. If a Worker has a running finite task but its container status is `stopped` or `not_found` (anomaly), start/recreate it and send an alert to the admin (see Step 7):
    ```bash
    bash /opt/hiclaw/agent/skills/worker-management/scripts/lifecycle-worker.sh --action start --worker <name>
    ```
+   The `start` action automatically handles both cases: if the container exists but is stopped it will be started; if the container is missing it will be recreated from credentials and registry config.
 
 ---
 

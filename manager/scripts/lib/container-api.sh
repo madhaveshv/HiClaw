@@ -29,7 +29,7 @@ _log() {
 _api() {
     local method="$1"
     local path="$2"
-    local data="$3"
+    local data="${3:-}"
     if [ -n "${data}" ]; then
         curl -s --unix-socket "${CONTAINER_SOCKET}" \
             -X "${method}" \
@@ -46,7 +46,7 @@ _api() {
 _api_code() {
     local method="$1"
     local path="$2"
-    local data="$3"
+    local data="${3:-}"
     if [ -n "${data}" ]; then
         curl -s -o /dev/null -w '%{http_code}' --unix-socket "${CONTAINER_SOCKET}" \
             -X "${method}" \
@@ -80,6 +80,38 @@ container_api_available() {
 # Get the Manager container's own IP (for Worker to connect back)
 container_get_manager_ip() {
     hostname -I 2>/dev/null | awk '{print $1}'
+}
+
+# Ensure a container image exists locally, pulling it if necessary.
+# Usage: _ensure_image <image>
+# The Docker/Podman "create image" API streams JSON progress; we wait for
+# completion and check the final status.
+_ensure_image() {
+    local image="$1"
+    # Quick check: does the image already exist locally?
+    local inspect
+    inspect=$(_api GET "/images/${image}/json" 2>/dev/null)
+    if echo "${inspect}" | grep -q '"Id"' 2>/dev/null; then
+        return 0
+    fi
+
+    _log "Image not found locally, pulling: ${image}"
+    # POST /images/create?fromImage=<ref> streams progress JSON.
+    # curl will block until the pull finishes (or fails).
+    local pull_output
+    pull_output=$(curl -s --unix-socket "${CONTAINER_SOCKET}" \
+        -X POST "${CONTAINER_API_BASE}/images/create?fromImage=${image}" 2>&1)
+
+    # Verify the image is now available
+    inspect=$(_api GET "/images/${image}/json" 2>/dev/null)
+    if echo "${inspect}" | grep -q '"Id"' 2>/dev/null; then
+        _log "Image pulled successfully: ${image}"
+        return 0
+    fi
+
+    _log "ERROR: Failed to pull image: ${image}"
+    _log "  Pull output (last 500 chars): ${pull_output: -500}"
+    return 1
 }
 
 # Create and start a Worker container
@@ -125,6 +157,11 @@ container_create_worker() {
     _log "  Image: ${WORKER_IMAGE}"
     _log "  FS endpoint: ${fs_endpoint}"
     _log "  Manager IP: ${manager_ip}"
+
+    # Pull image if not available locally
+    if ! _ensure_image "${WORKER_IMAGE}"; then
+        return 1
+    fi
 
     # Remove existing container with same name (if any)
     local existing
@@ -356,6 +393,11 @@ container_create_copaw_worker() {
     _log "  Image: ${COPAW_WORKER_IMAGE}"
     _log "  FS endpoint: ${fs_endpoint}"
     _log "  Manager IP: ${manager_ip}"
+
+    # Pull image if not available locally
+    if ! _ensure_image "${COPAW_WORKER_IMAGE}"; then
+        return 1
+    fi
 
     # Remove existing container with same name (if any)
     local existing
