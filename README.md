@@ -54,7 +54,7 @@ Key Features:
 
 ## Quick Start
 
-**Prerequisites**: Docker Desktop (Windows/macOS) or Docker Engine (Linux). That's all.
+**Prerequisites**: Docker Desktop (Windows/macOS) or Docker Engine (Linux). If deploying on virtual machines such as ECS or cloud desktops, please use a Linux operating system. For requirements involving a graphical interface, Ubuntu is recommended.Please note that the official image package currently does not support Windows systems on virtual machines, as Windows in a VM environment is not a Linux Container.
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows / macOS)
 - [Docker Engine](https://docs.docker.com/engine/install/) (Linux) or [Podman Desktop](https://podman-desktop.io/) (alternative)
@@ -298,11 +298,11 @@ make help  # All available targets
 ## Community
 
 - [Discord](https://discord.gg/NVjNA4BAVw)
-- [DingTalk Group](https://qr.dingtalk.com/action/joingroup?code=v1,k1,0etR5l8fxeb/6/mzE5hRE1uy4tkiwxvPV9+TdBv7sEM=&_dt_no_comment=1&origin=11)
+- [DingTalk Group](https://qr.dingtalk.com/action/joingroup?code=v1,k1,5K+D/m2s71QW2aBsoyJE0t2oQOMCk2yngAgkih4LyQM=&_dt_no_comment=1&origin=11)
 - WeChat Group — scan to join:
 
 <p align="center">
-  <img src="https://img.alicdn.com/imgextra/i2/O1CN01ga2NAM1QOTnByKW4l_!!6000000001966-2-tps-772-742.png" width="200" alt="WeChat Group" />
+  <img src="https://img.alicdn.com/imgextra/i1/O1CN01ZwP1gd27xlmxoqSa8_!!6000000007864-2-tps-752-740.png" width="200" alt="WeChat Group" />
 </p>
 
 ## License
