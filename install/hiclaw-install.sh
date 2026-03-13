@@ -386,6 +386,8 @@ msg() {
         "domain.gateway_prompt.en") text="AI Gateway Domain" ;;
         "domain.fs_prompt.zh") text="文件系统域名" ;;
         "domain.fs_prompt.en") text="File System Domain" ;;
+        "domain.console_prompt.zh") text="OpenClaw 控制台域名" ;;
+        "domain.console_prompt.en") text="OpenClaw Console Domain" ;;
         # --- GitHub Integration ---
         "github.title.zh") text="--- GitHub 集成（可选，按回车跳过）---" ;;
         "github.title.en") text="--- GitHub Integration (optional, press Enter to skip) ---" ;;
@@ -575,6 +577,8 @@ msg() {
         "success.other_consoles.en") text="--- Other Consoles ---" ;;
         "success.higress_console.zh") text="  Higress 控制台: http://localhost:%s（用户名: %s / 密码: %s）" ;;
         "success.higress_console.en") text="  Higress Console: http://localhost:%s (Username: %s / Password: %s)" ;;
+        "success.openclaw_console.zh") text="  OpenClaw 控制台: http://localhost:%s（用户名: %s / 密码: %s）" ;;
+        "success.openclaw_console.en") text="  OpenClaw Console: http://localhost:%s (Username: %s / Password: %s)" ;;
         "success.switch_llm.title.zh") text="--- 切换 LLM 提供商 ---" ;;
         "success.switch_llm.title.en") text="--- Switch LLM Providers ---" ;;
         "success.switch_llm.hint.zh") text="  您可以通过 Higress 控制台切换到其他 LLM 提供商（OpenAI、Anthropic 等）。" ;;
@@ -1501,6 +1505,7 @@ install_manager() {
     prompt HICLAW_MATRIX_CLIENT_DOMAIN "$(msg domain.element_prompt)" "matrix-client-local.hiclaw.io"
     prompt HICLAW_AI_GATEWAY_DOMAIN "$(msg domain.gateway_prompt)" "aigw-local.hiclaw.io"
     prompt HICLAW_FS_DOMAIN "$(msg domain.fs_prompt)" "fs-local.hiclaw.io"
+    prompt HICLAW_CONSOLE_DOMAIN "$(msg domain.console_prompt)" "console-local.hiclaw.io"
 
     log ""
 
@@ -1614,6 +1619,7 @@ HICLAW_MANAGER_GATEWAY_KEY=${HICLAW_MANAGER_GATEWAY_KEY}
 
 # File System
 HICLAW_FS_DOMAIN=${HICLAW_FS_DOMAIN}
+HICLAW_CONSOLE_DOMAIN=${HICLAW_CONSOLE_DOMAIN}
 HICLAW_MINIO_USER=${HICLAW_MINIO_USER}
 HICLAW_MINIO_PASSWORD=${HICLAW_MINIO_PASSWORD}
 
@@ -1800,7 +1806,7 @@ EOF
     log "$(msg success.title)"
     log ""
     log "$(msg success.domains_configured)"
-    log "  ${HICLAW_MATRIX_DOMAIN%%:*} ${HICLAW_MATRIX_CLIENT_DOMAIN} ${HICLAW_AI_GATEWAY_DOMAIN} ${HICLAW_FS_DOMAIN}"
+    log "  ${HICLAW_MATRIX_DOMAIN%%:*} ${HICLAW_MATRIX_CLIENT_DOMAIN} ${HICLAW_AI_GATEWAY_DOMAIN} ${HICLAW_FS_DOMAIN} ${HICLAW_CONSOLE_DOMAIN}"
     log ""
     local lan_ip
     lan_ip=$(detect_lan_ip)
@@ -1839,6 +1845,7 @@ EOF
     log ""
     log "$(msg success.other_consoles)"
     log "$(msg success.higress_console "${HICLAW_PORT_CONSOLE}" "${HICLAW_ADMIN_USER}" "${HICLAW_ADMIN_PASSWORD}")"
+    log "$(msg success.openclaw_console "${HICLAW_PORT_OPENCLAW_CONSOLE:-18888}" "${HICLAW_ADMIN_USER}" "${HICLAW_ADMIN_PASSWORD}")"
     log ""
     log "$(msg success.switch_llm.title)"
     log "$(msg success.switch_llm.hint)"
