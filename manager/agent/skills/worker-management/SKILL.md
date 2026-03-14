@@ -300,7 +300,7 @@ Fields:
 - `auto_stopped_at`: when the Manager auto-stopped the container (audit trail)
 - `last_started_at`: when the Manager last started/woke the container
 
-`container_status = "remote"` means the Worker is remotely deployed (no container API access) and is excluded from automatic lifecycle management.
+`container_status = "remote"` means the Worker is remotely deployed (no container API access) and is excluded from automatic lifecycle management. Workers with `deployment: "remote"` in `workers-registry.json` are also excluded from container recreate on Manager restart.
 
 ### Manual Commands
 
@@ -336,6 +336,27 @@ jq '.idle_timeout_minutes = 60' ~/worker-lifecycle.json > /tmp/lc.json && mv /tm
 | Worker needs reset or config update | `create-worker.sh` (removes old container first) | Full rebuild; Matrix account is reused |
 | copaw runtime worker (container) | `lifecycle-worker.sh --action start` | Restarts the existing CoPaw container |
 | copaw runtime worker (remote) | `copaw-worker --name <name> ...` (on target machine) | Not container-managed; lifecycle scripts skip these workers |
+| Any runtime worker (remote deployment) | Admin runs install command on target machine | `deployment: "remote"` in registry; Manager skips auto-restart on upgrade |
+
+### Get Remote Worker Install Command
+
+When the admin asks for the install/start command for a remote Worker (e.g., after Manager upgrade or to re-deploy on another machine):
+
+```bash
+bash /opt/hiclaw/agent/skills/worker-management/scripts/get-worker-install-cmd.sh --worker <name>
+```
+
+Output:
+```json
+{
+  "worker": "alice",
+  "runtime": "copaw",
+  "deployment": "remote",
+  "install_cmd": "pip install -i https://mirrors.aliyun.com/pypi/simple/ copaw-worker && copaw-worker --name alice --fs http://fs-local.hiclaw.io:18080 --fs-key alice --fs-secret <secret> --console-port 8088"
+}
+```
+
+Provide the `install_cmd` value **verbatim in a code block** to the admin — do NOT redact any parameter values. The command must be directly copy-pasteable. Also remind the admin that the target machine must resolve the Manager's domains (see "Post-creation" notes above).
 
 ## CoPaw Console Management
 
@@ -395,6 +416,7 @@ Format:
       "matrix_user_id": "@<name>:<domain>",
       "room_id": "!xxx:<domain>",
       "runtime": "openclaw",
+      "deployment": "local",
       "skills": ["file-sync", "github-operations"],
       "created_at": "2026-01-01T00:00:00Z",
       "skills_updated_at": "2026-01-01T00:00:00Z"
@@ -404,6 +426,8 @@ Format:
 ```
 
 `runtime` is `"openclaw"` (default, container-based) or `"copaw"` (pip-installed Python process). Omitted field defaults to `"openclaw"` for backward compatibility.
+
+`deployment` is `"local"` (Manager-managed container) or `"remote"` (admin-managed, runs on a separate machine). Omitted field defaults to `"local"` for backward compatibility. Remote workers are excluded from automatic container lifecycle management (auto-stop/start/recreate on Manager restart). After a Manager upgrade, remote workers must be restarted by the admin manually.
 
 `file-sync` is the bootstrap skill (image-managed) and is always included.
 

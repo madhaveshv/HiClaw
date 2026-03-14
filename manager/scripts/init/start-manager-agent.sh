@@ -344,6 +344,14 @@ if container_api_available; then
     if [ -f "${REGISTRY_FILE}" ]; then
         for _worker_name in $(jq -r '.workers | keys[]' "${REGISTRY_FILE}" 2>/dev/null); do
             [ -z "${_worker_name}" ] && continue
+
+            # Skip remote workers — they are not Manager-managed containers.
+            _deployment=$(jq -r --arg w "${_worker_name}" '.workers[$w].deployment // "local"' "${REGISTRY_FILE}" 2>/dev/null)
+            if [ "${_deployment}" = "remote" ]; then
+                log "Worker ${_worker_name} is remote, skipping container recreate"
+                continue
+            fi
+
             _status=$(container_status_worker "${_worker_name}")
             if [ "${_status}" = "running" ]; then
                 # Check if ExtraHosts IP still matches current Manager IP.

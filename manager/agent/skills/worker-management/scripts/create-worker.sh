@@ -391,6 +391,15 @@ fi
 # By default, a Worker only accepts @mentions from Manager and the human admin.
 # This prevents infinite mutual-mention loops between Workers.
 # Inter-worker direct @mentions must be explicitly enabled per-project when needed.
+# Pre-compute deployment hint for registry (actual DEPLOY_MODE is finalized in Step 9)
+# "remote" = admin will run the worker themselves; "local" = Manager-managed container
+# If container creation fails in Step 9, this will be corrected to "remote" afterward.
+if [ "${REMOTE_MODE}" = true ]; then
+    DEPLOY_MODE_HINT="remote"
+else
+    DEPLOY_MODE_HINT="local"
+fi
+
 REGISTRY_FILE_EARLY="${HOME}/workers-registry.json"
 
 # ============================================================
@@ -496,11 +505,13 @@ jq --arg w "${WORKER_NAME}" \
    --arg rid "${ROOM_ID}" \
    --arg ts "${NOW_TS}" \
    --arg runtime "${WORKER_RUNTIME}" \
+   --arg deployment "${DEPLOY_MODE_HINT}" \
    --argjson skills "${SKILLS_JSON}" \
    '.workers[$w] = {
      "matrix_user_id": $uid,
      "room_id": $rid,
      "runtime": $runtime,
+     "deployment": $deployment,
      "skills": $skills,
      "created_at": (if .workers[$w].created_at? then .workers[$w].created_at else $ts end),
      "skills_updated_at": $ts
@@ -623,6 +634,16 @@ elif container_api_available; then
 else
     log "Step 9: No container runtime socket available"
     INSTALL_CMD=$(_build_install_cmd)
+fi
+
+# ============================================================
+# Step 9b: Correct deployment field if actual mode differs from hint
+# ============================================================
+if [ "${DEPLOY_MODE}" = "remote" ] && [ "${DEPLOY_MODE_HINT}" = "local" ]; then
+    log "Step 9b: Container creation failed, correcting deployment to 'remote' in registry..."
+    jq --arg w "${WORKER_NAME}" '.workers[$w].deployment = "remote"' \
+        "${REGISTRY_FILE}" > /tmp/workers-registry-deploy-fix.json
+    mv /tmp/workers-registry-deploy-fix.json "${REGISTRY_FILE}"
 fi
 
 # ============================================================

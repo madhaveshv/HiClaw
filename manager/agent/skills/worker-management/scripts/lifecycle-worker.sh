@@ -269,6 +269,15 @@ action_start() {
     _init_lifecycle_file
     _ensure_worker_entry "$worker"
 
+    # Skip remote workers — they are not Manager-managed containers
+    local deployment
+    deployment=$(jq -r --arg w "$worker" '.workers[$w].deployment // "local"' "$REGISTRY_FILE" 2>/dev/null)
+    if [ "$deployment" = "remote" ]; then
+        _log "Worker $worker is remote — cannot start via container API"
+        _log "The admin should restart this worker on the target machine manually"
+        return 1
+    fi
+
     if ! container_api_available; then
         _log "ERROR: Container API not available"
         return 1
