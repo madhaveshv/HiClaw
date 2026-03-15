@@ -293,15 +293,7 @@ if [ -f /root/manager-workspace/openclaw.json ]; then
     jq --arg token "${MANAGER_TOKEN}" \
        --arg key "${HICLAW_MANAGER_GATEWAY_KEY}" \
        --arg model "${MODEL_NAME}" \
-       --argjson ctx "${MODEL_CONTEXT_WINDOW}" \
-       --argjson max "${MODEL_MAX_TOKENS}" \
-       --argjson input "${MODEL_INPUT}" \
        '.channels.matrix.accessToken = $token | .hooks.token = $key | .models.providers["hiclaw-gateway"].apiKey = $key
-        | .models.providers["hiclaw-gateway"].models[0].id = $model
-        | .models.providers["hiclaw-gateway"].models[0].name = $model
-        | .models.providers["hiclaw-gateway"].models[0].contextWindow = $ctx
-        | .models.providers["hiclaw-gateway"].models[0].maxTokens = $max
-        | .models.providers["hiclaw-gateway"].models[0].input = $input
         | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)
         | .commands.restart = true
         | .gateway.controlUi.dangerouslyDisableDeviceAuth = true' \

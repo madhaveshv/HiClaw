@@ -122,22 +122,43 @@ log "Model test passed (HTTP 200)"
 rm -f /tmp/model-test-resp.json
 # ─────────────────────────────────────────────────────────────────────────────
 
-TMP=$(mktemp)
-jq --arg model "${MODEL_NAME}" \
-   --argjson ctx "${CTX}" \
-   --argjson max "${MAX}" \
-   --argjson reasoning "${REASONING}" \
-   --argjson input "${INPUT}" \
-   '(.models.providers["hiclaw-gateway"].models[0]) |= (. + {
-       "id": $model,
-       "name": $model,
-       "reasoning": $reasoning,
-       "contextWindow": $ctx,
-       "maxTokens": $max,
-       "input": $input
-     })
-    | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
-   "${CONFIG_FILE}" > "${TMP}" && mv "${TMP}" "${CONFIG_FILE}"
+# Check if the model already exists in the models array
+MODEL_EXISTS=$(jq --arg model "${MODEL_NAME}" \
+    '[.models.providers["hiclaw-gateway"].models[] | select(.id == $model)] | length' \
+    "${CONFIG_FILE}" 2>/dev/null)
 
-log "Done. OpenClaw will hot-reload the config within ~300ms."
-log "Model is now: ${MODEL_NAME}"
+TMP=$(mktemp)
+if [ "${MODEL_EXISTS}" -gt 0 ]; then
+    # Known model: just switch the primary model pointer (hot-reload, no restart)
+    jq --arg model "${MODEL_NAME}" \
+       --argjson reasoning "${REASONING}" \
+       '(.models.providers["hiclaw-gateway"].models[] | select(.id == $model)).reasoning = $reasoning
+        | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
+       "${CONFIG_FILE}" > "${TMP}" && mv "${TMP}" "${CONFIG_FILE}"
+
+    log "Done. OpenClaw will hot-reload the config within ~300ms."
+    log "Model is now: ${MODEL_NAME}"
+else
+    # Unknown model: add to models array and switch primary
+    jq --arg model "${MODEL_NAME}" \
+       --argjson ctx "${CTX}" \
+       --argjson max "${MAX}" \
+       --argjson reasoning "${REASONING}" \
+       --argjson input "${INPUT}" \
+       '.models.providers["hiclaw-gateway"].models += [{
+           "id": $model,
+           "name": $model,
+           "reasoning": $reasoning,
+           "contextWindow": $ctx,
+           "maxTokens": $max,
+           "input": $input
+         }]
+        | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
+       "${CONFIG_FILE}" > "${TMP}" && mv "${TMP}" "${CONFIG_FILE}"
+
+    log "Done. Model '${MODEL_NAME}' has been added to the models list."
+    log "IMPORTANT: This is a new model not in the pre-configured list. You need to restart to pick up the new model entry."
+    log "Run: bash -c 'openclaw gateway restart' or use the restart command."
+    echo ""
+    echo "RESTART_REQUIRED: Model '${MODEL_NAME}' was added to openclaw.json but a restart is needed for it to take effect."
+fi

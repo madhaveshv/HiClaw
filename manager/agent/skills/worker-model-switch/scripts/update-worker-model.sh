@@ -128,22 +128,39 @@ update_worker_model() {
         return 1
     fi
 
-    # Patch model id, name, contextWindow, maxTokens, input, reasoning
-    jq --arg model "${new_model}" \
-       --argjson ctx "${CTX}" \
-       --argjson max "${MAX}" \
-       --argjson reasoning "${REASONING}" \
-       --argjson input "${INPUT}" \
-       '(.models.providers["hiclaw-gateway"].models[0]) |= (. + {
-           "id": $model,
-           "name": $model,
-           "reasoning": $reasoning,
-           "contextWindow": $ctx,
-           "maxTokens": $max,
-           "input": $input
-         })
-        | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
-       "${tmp_in}" > "${tmp_out}"
+    # Check if the model already exists in the models array
+    local model_exists
+    model_exists=$(jq --arg model "${new_model}" \
+        '[.models.providers["hiclaw-gateway"].models[] | select(.id == $model)] | length' \
+        "${tmp_in}" 2>/dev/null)
+
+    local restart_required=false
+    if [ "${model_exists}" -gt 0 ]; then
+        # Known model: just switch the primary model pointer (hot-reload, no restart)
+        jq --arg model "${new_model}" \
+           --argjson reasoning "${REASONING}" \
+           '(.models.providers["hiclaw-gateway"].models[] | select(.id == $model)).reasoning = $reasoning
+            | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
+           "${tmp_in}" > "${tmp_out}"
+    else
+        # Unknown model: add to models array and switch primary
+        restart_required=true
+        jq --arg model "${new_model}" \
+           --argjson ctx "${CTX}" \
+           --argjson max "${MAX}" \
+           --argjson reasoning "${REASONING}" \
+           --argjson input "${INPUT}" \
+           '.models.providers["hiclaw-gateway"].models += [{
+               "id": $model,
+               "name": $model,
+               "reasoning": $reasoning,
+               "contextWindow": $ctx,
+               "maxTokens": $max,
+               "input": $input
+             }]
+            | .agents.defaults.model.primary = ("hiclaw-gateway/" + $model)' \
+           "${tmp_in}" > "${tmp_out}"
+    fi
 
     if ! mc cp "${tmp_out}" "${minio_path}" 2>/dev/null; then
         _log "ERROR: Failed to push updated openclaw.json for ${worker} to MinIO"
@@ -176,11 +193,17 @@ update_worker_model() {
     if [ -n "${room_id}" ] && [ -n "${manager_token}" ]; then
         local txn_id
         txn_id=$(openssl rand -hex 8)
+        local msg_body
+        if [ "${restart_required}" = true ]; then
+            msg_body="@${worker}:${matrix_domain} Your model has been updated to \`${new_model}\` (reasoning=${REASONING}). This is a new model not in the pre-configured list — a restart is needed for it to take effect. Please use your file-sync skill to sync the latest config, then restart."
+        else
+            msg_body="@${worker}:${matrix_domain} Your model has been updated to \`${new_model}\` (reasoning=${REASONING}). Please use your file-sync skill to sync the latest config."
+        fi
         curl -sf -X PUT \
             "http://127.0.0.1:6167/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn_id}" \
             -H "Authorization: Bearer ${manager_token}" \
             -H 'Content-Type: application/json' \
-            -d "{\"msgtype\":\"m.text\",\"body\":\"@${worker}:${matrix_domain} Your model has been updated to \`${new_model}\` (reasoning=${REASONING}). Please use your file-sync skill to sync the latest config.\",\"m.mentions\":{\"user_ids\":[\"@${worker}:${matrix_domain}\"]}}" \
+            -d "{\"msgtype\":\"m.text\",\"body\":\"${msg_body}\",\"m.mentions\":{\"user_ids\":[\"@${worker}:${matrix_domain}\"]}}" \
             > /dev/null 2>&1 \
             && _log "Notified @${worker} to use file-sync skill" \
             || _log "WARNING: Failed to notify @${worker} (container may be stopped)"
@@ -189,6 +212,11 @@ update_worker_model() {
     fi
 
     _log "Model update complete for ${worker}: ${new_model} (ctx=${CTX}, max=${MAX}, reasoning=${REASONING}, input=${INPUT})"
+    if [ "${restart_required}" = true ]; then
+        _log "IMPORTANT: Model '${new_model}' was not in the pre-configured list. The Worker needs to restart for it to take effect."
+        echo ""
+        echo "RESTART_REQUIRED: Model '${new_model}' was added to openclaw.json but the Worker '${worker}' needs a restart for it to take effect."
+    fi
 }
 
 # ─── Argument parsing ─────────────────────────────────────────────────────────

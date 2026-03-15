@@ -28,3 +28,6 @@ Record image-affecting changes to `manager/`, `worker/`, `openclaw-base/` here b
 - docs(manager): improve CoPaw console documentation in SKILL.md — add trigger keywords, description, and scope notes; restructure TOOLS.md to clearly separate Skills vs Operations sections
 - fix(manager): worker AGENTS.md @mention protocol — require @mention when replying to Manager progress inquiries; change phase completion to task-only completion notification (TASK_COMPLETED format)
 - fix(copaw): skill sync now mirrors entire skill directory (including scripts/ and references/) instead of only pulling SKILL.md, matching OpenClaw worker's mc mirror behavior; restores +x on .sh files after pull
+- feat(manager): pre-configure all known models in openclaw.json templates — switching between known models is now a hot-reload (no restart); unknown models are appended dynamically with RESTART_REQUIRED output
+- feat(manager): model-switch and worker-model-switch scripts detect known vs unknown models via openclaw.json models array instead of overwriting models[0]
+- feat(manager): model-switch and worker-model-switch SKILL.md updated — Agent checks script output for RESTART_REQUIRED to decide whether to prompt user for restart
