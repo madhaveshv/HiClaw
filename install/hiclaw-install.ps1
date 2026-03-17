@@ -1056,12 +1056,14 @@ function Send-WelcomeMessage {
 MATRIX_URL="http://127.0.0.1:6167"
 MANAGER_FULL_ID="@manager:${MATRIX_DOMAIN}"
 
-login_resp=$(curl -sf -X POST "${MATRIX_URL}/_matrix/client/v3/login" \
+_raw=$(curl -s -w '\nHTTP_CODE:%{http_code}' -X POST "${MATRIX_URL}/_matrix/client/v3/login" \
     -H 'Content-Type: application/json' \
-    -d "{\"type\":\"m.login.password\",\"identifier\":{\"type\":\"m.id.user\",\"user\":\"${ADMIN_USER}\"},\"password\":\"${ADMIN_PASSWORD}\"}" 2>/dev/null) || true
+    -d "{\"type\":\"m.login.password\",\"identifier\":{\"type\":\"m.id.user\",\"user\":\"${ADMIN_USER}\"},\"password\":\"${ADMIN_PASSWORD}\"}" 2>&1) || true
+_http_code=$(echo "${_raw}" | tail -1 | sed 's/HTTP_CODE://')
+login_resp=$(echo "${_raw}" | sed '$d')
 access_token=$(echo "${login_resp}" | jq -r '.access_token // empty' 2>/dev/null)
 if [ -z "${access_token}" ]; then
-    echo "LOGIN_FAILED: ${login_resp}" >&2; echo "LOGIN_FAILED"; exit 0
+    echo "LOGIN_FAILED (HTTP ${_http_code}): ${login_resp}"; exit 0
 fi
 
 room_id=""
@@ -1077,13 +1079,17 @@ for rid in ${rooms}; do
 done
 
 if [ -z "${room_id}" ]; then
-    create_resp=$(curl -sf -X POST "${MATRIX_URL}/_matrix/client/v3/createRoom" \
+    _raw=$(curl -s -w '\nHTTP_CODE:%{http_code}' -X POST "${MATRIX_URL}/_matrix/client/v3/createRoom" \
         -H "Authorization: Bearer ${access_token}" \
         -H 'Content-Type: application/json' \
-        -d "{\"is_direct\":true,\"invite\":[\"${MANAGER_FULL_ID}\"],\"preset\":\"trusted_private_chat\"}" 2>/dev/null) || true
+        -d "{\"is_direct\":true,\"invite\":[\"${MANAGER_FULL_ID}\"],\"preset\":\"trusted_private_chat\"}" 2>&1) || true
+    _http_code=$(echo "${_raw}" | tail -1 | sed 's/HTTP_CODE://')
+    create_resp=$(echo "${_raw}" | sed '$d')
     room_id=$(echo "${create_resp}" | jq -r '.room_id // empty' 2>/dev/null)
+    if [ -z "${room_id}" ]; then
+        echo "NO_ROOM (HTTP ${_http_code}): ${create_resp}"; exit 0
+    fi
 fi
-[ -z "${room_id}" ] && { echo "NO_ROOM" >&2; echo "NO_ROOM"; exit 0; }
 
 # Wait for Manager to join; bail out if it never does (avoids 403 on send)
 manager_joined=false
@@ -1097,7 +1103,7 @@ while [ "${wait_elapsed}" -lt 60 ]; do
     sleep 2; wait_elapsed=$((wait_elapsed + 2))
 done
 if [ "${manager_joined}" != "true" ]; then
-    echo "NO_ROOM" >&2; echo "NO_ROOM"; exit 0
+    echo "NO_ROOM: Manager did not join room ${room_id} within 60s"; exit 0
 fi
 
 # HICLAW_LANGUAGE and HICLAW_TIMEZONE are passed in via -e flags; use them directly
@@ -1128,11 +1134,17 @@ The human admin will start chatting shortly."
 
 txn_id="welcome-$(date +%s)"
 payload=$(jq -nc --arg body "${welcome_msg}" '{"msgtype":"m.text","body":$body}')
-curl -sf -X PUT "${MATRIX_URL}/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn_id}" \
+_raw=$(curl -s -w '\nHTTP_CODE:%{http_code}' -X PUT "${MATRIX_URL}/_matrix/client/v3/rooms/${room_id}/send/m.room.message/${txn_id}" \
     -H "Authorization: Bearer ${access_token}" \
     -H 'Content-Type: application/json' \
-    -d "${payload}" > /dev/null 2>&1 || { echo "SEND_FAILED" >&2; echo "SEND_FAILED"; exit 0; }
-echo "OK"
+    -d "${payload}" 2>&1) || true
+_http_code=$(echo "${_raw}" | tail -1 | sed 's/HTTP_CODE://')
+send_resp=$(echo "${_raw}" | sed '$d')
+if echo "${send_resp}" | jq -e '.event_id' > /dev/null 2>&1; then
+    echo "OK"
+else
+    echo "SEND_FAILED (HTTP ${_http_code}): ${send_resp}"; exit 0
+fi
 '@
 
     # Pass credentials and language/timezone as env vars (-e) so they never
@@ -1148,14 +1160,20 @@ echo "OK"
     switch -Wildcard ($result) {
         "*LOGIN_FAILED*" {
             Write-Log (Get-Msg "install.welcome_msg.login_failed" -f $AdminUser)
+            $detail = ($result -split "LOGIN_FAILED: ", 2)[1]
+            if ($detail) { Write-Log "  Detail: $detail" }
             return $false
         }
         "*NO_ROOM*" {
             Write-Log (Get-Msg "install.welcome_msg.no_room")
+            $detail = ($result -split "NO_ROOM: ", 2)[1]
+            if ($detail) { Write-Log "  Detail: $detail" }
             return $false
         }
         "*SEND_FAILED*" {
             Write-Log (Get-Msg "install.welcome_msg.send_failed")
+            $detail = ($result -split "SEND_FAILED: ", 2)[1]
+            if ($detail) { Write-Log "  Detail: $detail" }
             return $false
         }
         "*OK*" {
