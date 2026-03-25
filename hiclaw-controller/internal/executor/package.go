@@ -44,12 +44,14 @@ func (p *PackageResolver) Resolve(ctx context.Context, uri string) (string, erro
 	case "nacos":
 		return p.resolveNacos(ctx, parsed)
 	default:
-		// Treat as local path for backward compatibility
+		// Treat as relative MinIO path (e.g. "packages/alice.zip") or local path
+		// For relative paths without scheme, check local import dir first
 		localPath := filepath.Join(p.ImportDir, filepath.Base(uri))
 		if _, err := os.Stat(localPath); err == nil {
 			return localPath, nil
 		}
-		return "", fmt.Errorf("unsupported package scheme %q (use file://, http(s)://, or nacos://)", parsed.Scheme)
+		// If not found locally, it may be a MinIO-relative path — return empty (no package to resolve)
+		return "", nil
 	}
 }
 

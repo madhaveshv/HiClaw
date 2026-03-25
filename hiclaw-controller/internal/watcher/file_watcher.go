@@ -74,7 +74,15 @@ func (w *FileWatcher) Watch(ctx context.Context) error {
 	defer watcher.Close()
 
 	// Watch the base dir and all subdirectories
-	dirs := []string{w.WatchDir}
+	// Ensure base dir and standard subdirectories exist (mc-mirror may not have created them yet)
+	for _, subdir := range []string{"", "workers", "teams", "humans"} {
+		dir := filepath.Join(w.WatchDir, subdir)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create dir %s: %w", dir, err)
+		}
+	}
+
+	dirs := []string{}
 	filepath.WalkDir(w.WatchDir, func(path string, d fs.DirEntry, err error) error {
 		if err == nil && d.IsDir() {
 			dirs = append(dirs, path)
@@ -84,6 +92,8 @@ func (w *FileWatcher) Watch(ctx context.Context) error {
 	for _, dir := range dirs {
 		if err := watcher.Add(dir); err != nil {
 			logger.Error(err, "failed to watch directory", "dir", dir)
+		} else {
+			logger.Info("watching directory", "dir", dir)
 		}
 	}
 

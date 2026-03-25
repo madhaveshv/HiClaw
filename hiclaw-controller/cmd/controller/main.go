@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	v1 "github.com/hiclaw/hiclaw-controller/api/v1"
@@ -18,6 +19,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 func main() {
@@ -35,6 +37,12 @@ func main() {
 	dataDir := os.Getenv("HICLAW_DATA_DIR")
 	if dataDir == "" {
 		dataDir = "/data/hiclaw-controller"
+	}
+	// Ensure absolute path
+	if !filepath.IsAbs(dataDir) {
+		if wd, err := os.Getwd(); err == nil {
+			dataDir = filepath.Join(wd, dataDir)
+		}
 	}
 
 	httpAddr := os.Getenv("HICLAW_HTTP_ADDR")
@@ -98,6 +106,9 @@ func main() {
 		// 3. Create controller-runtime manager
 		mgr, err = ctrl.NewManager(restCfg, ctrl.Options{
 			Scheme: scheme,
+			Metrics: metricsserver.Options{
+				BindAddress: "0", // disable metrics server (port 8080 conflicts with Higress)
+			},
 		})
 		if err != nil {
 			logger.Error(err, "failed to create controller manager")

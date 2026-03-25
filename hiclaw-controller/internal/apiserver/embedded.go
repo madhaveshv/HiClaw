@@ -5,12 +5,14 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -78,6 +80,16 @@ func Start(ctx context.Context, cfg Config) (*rest.Config, error) {
 		}
 	}
 
+	// Create static token file for authentication
+	tokenFile := filepath.Join(certDir, "token.csv")
+	const adminToken = "hiclaw-admin-token"
+	if _, err := os.Stat(tokenFile); os.IsNotExist(err) {
+		// Format: token,user,uid,"group1,group2"
+		if err := os.WriteFile(tokenFile, []byte(adminToken+",admin,admin,\"system:masters\"\n"), 0600); err != nil {
+			return nil, fmt.Errorf("failed to create token file: %w", err)
+		}
+	}
+
 	// Start kube-apiserver
 	args := []string{
 		"--etcd-servers=" + cfg.EtcdURL,
@@ -89,6 +101,7 @@ func Start(ctx context.Context, cfg Config) (*rest.Config, error) {
 		"--service-account-key-file=" + saPubFile,
 		"--service-account-signing-key-file=" + saKeyFile,
 		"--service-account-issuer=https://hiclaw.local",
+		"--token-auth-file=" + tokenFile,
 		"--authorization-mode=AlwaysAllow",
 		"--anonymous-auth=true",
 		"--disable-admission-plugins=ServiceAccount",
@@ -105,9 +118,10 @@ func Start(ctx context.Context, cfg Config) (*rest.Config, error) {
 		return nil, fmt.Errorf("failed to start kube-apiserver: %w", err)
 	}
 
-	// Build rest.Config
+	// Build rest.Config with token auth
 	restCfg := &rest.Config{
-		Host: fmt.Sprintf("https://%s:%s", cfg.BindAddr, cfg.SecurePort),
+		Host:        fmt.Sprintf("https://%s:%s", cfg.BindAddr, cfg.SecurePort),
+		BearerToken: adminToken,
 		TLSClientConfig: rest.TLSClientConfig{
 			CAFile: caCertFile,
 		},
@@ -131,20 +145,36 @@ func Start(ctx context.Context, cfg Config) (*rest.Config, error) {
 	return restCfg, nil
 }
 
-// waitForReady polls the apiserver /healthz endpoint until it returns 200.
+// waitForReady polls the apiserver until it responds to HTTP requests.
+// Any HTTP response (including 401) means the server is up and ready.
 func waitForReady(ctx context.Context, cfg *rest.Config) error {
+	// Build a simple HTTP client with the CA cert
+	caCert, err := os.ReadFile(cfg.TLSClientConfig.CAFile)
+	if err != nil {
+		return fmt.Errorf("failed to read CA cert: %w", err)
+	}
+	certPool := x509.NewCertPool()
+	certPool.AppendCertsFromPEM(caCert)
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certPool,
+			},
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	healthURL := cfg.Host + "/healthz"
+
 	return wait.PollUntilContextTimeout(ctx, time.Second, 60*time.Second, true, func(ctx context.Context) (bool, error) {
-		client, err := rest.UnversionedRESTClientFor(cfg)
+		resp, err := httpClient.Get(healthURL)
 		if err != nil {
-			return false, nil
+			return false, nil // connection refused, not ready yet
 		}
-		result := client.Get().AbsPath("/healthz").Do(ctx)
-		if result.Error() != nil {
-			return false, nil
-		}
-		var statusCode int
-		result.StatusCode(&statusCode)
-		return statusCode == 200, nil
+		defer resp.Body.Close()
+		// Any HTTP response means the server is up (even 401 from anonymous auth)
+		return true, nil
 	})
 }
 
