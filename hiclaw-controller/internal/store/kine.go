@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/k3s-io/kine/pkg/endpoint"
 )
@@ -42,8 +43,9 @@ func StartKine(ctx context.Context, cfg Config) (*KineServer, error) {
 	dsn := fmt.Sprintf("sqlite://%s?_journal=WAL&cache=shared&_busy_timeout=30000", dbPath)
 
 	etcdCfg, err := endpoint.Listen(ctx, endpoint.Config{
-		Listener: cfg.ListenAddress,
-		Endpoint: dsn,
+		Listener:       cfg.ListenAddress,
+		Endpoint:       dsn,
+		NotifyInterval: time.Second,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start kine: %w", err)

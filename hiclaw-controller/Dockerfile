@@ -16,7 +16,7 @@ COPY go.mod go.sum ./
 RUN go mod download || true
 
 COPY . .
-RUN CGO_ENABLED=1 go build -o /hiclaw-controller ./cmd/controller/
+RUN CGO_ENABLED=1 go build -ldflags '-extldflags "-static"' -o /hiclaw-controller ./cmd/controller/
 RUN CGO_ENABLED=0 go build -o /hiclaw ./cmd/hiclaw/
 
 # ============ Stage 2: Download kube-apiserver ============

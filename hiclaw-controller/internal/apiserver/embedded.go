@@ -66,7 +66,6 @@ func Start(ctx context.Context, cfg Config) (*rest.Config, error) {
 
 	// Generate self-signed certs if not present
 	caCertFile := filepath.Join(certDir, "ca.crt")
-	caKeyFile := filepath.Join(certDir, "ca.key")
 	servingCertFile := filepath.Join(certDir, "apiserver.crt")
 	servingKeyFile := filepath.Join(certDir, "apiserver.key")
 	saKeyFile := filepath.Join(certDir, "sa.key")
