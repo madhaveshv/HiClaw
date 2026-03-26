@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/alibaba/hiclaw/orchestrator/auth"
 	"github.com/alibaba/hiclaw/orchestrator/backend"
 )
 
@@ -101,7 +102,8 @@ func (m *mockBackend) List(_ context.Context) ([]backend.WorkerResult, error) {
 
 func setupHandler(mb *mockBackend) (*WorkerHandler, *http.ServeMux) {
 	reg := backend.NewRegistry([]backend.WorkerBackend{mb}, nil)
-	h := NewWorkerHandler(reg)
+	ks := auth.NewKeyStore("", nil) // auth disabled for handler tests
+	h := NewWorkerHandler(reg, ks, "")
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /workers", h.Create)
 	mux.HandleFunc("GET /workers", h.List)
@@ -350,8 +352,9 @@ func TestCreateWorkerGenericError(t *testing.T) {
 	}
 }
 
-func TestGatewayStubs(t *testing.T) {
-	h := NewGatewayHandler()
+func TestGatewayNoBackend(t *testing.T) {
+	reg := backend.NewRegistry(nil, nil) // no gateway backends
+	h := NewGatewayHandler(reg)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /gateway/consumers", h.CreateConsumer)
 	mux.HandleFunc("POST /gateway/consumers/{id}/bind", h.BindConsumer)

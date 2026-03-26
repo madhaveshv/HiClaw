@@ -24,6 +24,7 @@ type WorkerResponse struct {
 	ContainerID string                `json:"container_id,omitempty"`
 	AppID       string                `json:"app_id,omitempty"`
 	RawStatus   string                `json:"raw_status,omitempty"`
+	APIKey      string                `json:"api_key,omitempty"`
 }
 
 // WorkerListResponse is the JSON response for GET /workers.
@@ -50,9 +51,4 @@ type ConsumerResponse struct {
 type BindConsumerRequest struct {
 	ModelAPIID string `json:"model_api_id"`
 	EnvID      string `json:"env_id"`
-}
-
-// ErrorResponse is the JSON error response.
-type ErrorResponse struct {
-	Message string `json:"message"`
 }

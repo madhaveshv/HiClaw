@@ -6,39 +6,56 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/alibaba/hiclaw/orchestrator/auth"
 	"github.com/alibaba/hiclaw/orchestrator/backend"
+	"github.com/alibaba/hiclaw/orchestrator/internal/httputil"
 )
 
 // WorkerHandler handles /workers/* HTTP requests.
 type WorkerHandler struct {
-	registry *backend.Registry
+	registry        *backend.Registry
+	keyStore        *auth.KeyStore
+	orchestratorURL string
 }
 
-// NewWorkerHandler creates a WorkerHandler with the given backend registry.
-func NewWorkerHandler(registry *backend.Registry) *WorkerHandler {
-	return &WorkerHandler{registry: registry}
+// NewWorkerHandler creates a WorkerHandler.
+func NewWorkerHandler(registry *backend.Registry, keyStore *auth.KeyStore, orchestratorURL string) *WorkerHandler {
+	return &WorkerHandler{registry: registry, keyStore: keyStore, orchestratorURL: orchestratorURL}
 }
 
 // Create handles POST /workers.
 func (h *WorkerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateWorkerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		httputil.WriteError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 	if req.Name == "" {
-		writeError(w, http.StatusBadRequest, "name is required")
+		httputil.WriteError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 	if req.Image == "" {
-		writeError(w, http.StatusBadRequest, "image is required")
+		httputil.WriteError(w, http.StatusBadRequest, "image is required")
 		return
 	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), req.Backend)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
+	}
+
+	// For SAE backend: generate per-worker API key and inject into env
+	var apiKey string
+	if b.Name() == "sae" && h.keyStore != nil && h.keyStore.AuthEnabled() {
+		apiKey = h.keyStore.GenerateWorkerKey(req.Name)
+		if req.Env == nil {
+			req.Env = make(map[string]string)
+		}
+		req.Env["HICLAW_WORKER_API_KEY"] = apiKey
+		if h.orchestratorURL != "" {
+			req.Env["HICLAW_ORCHESTRATOR_URL"] = h.orchestratorURL
+		}
 	}
 
 	result, err := b.Create(r.Context(), backend.CreateRequest{
@@ -52,18 +69,23 @@ func (h *WorkerHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("[ERROR] create worker %s: %v", req.Name, err)
+		if apiKey != "" {
+			h.keyStore.RemoveWorkerKey(req.Name)
+		}
 		writeBackendError(w, err)
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, toWorkerResponse(result))
+	resp := toWorkerResponse(result)
+	resp.APIKey = apiKey
+	httputil.WriteJSON(w, http.StatusCreated, resp)
 }
 
 // List handles GET /workers.
 func (h *WorkerHandler) List(w http.ResponseWriter, r *http.Request) {
 	b, err := h.registry.GetWorkerBackend(r.Context(), "")
 	if err != nil {
-		writeJSON(w, http.StatusOK, WorkerListResponse{Workers: []WorkerResponse{}})
+		httputil.WriteJSON(w, http.StatusOK, WorkerListResponse{Workers: []WorkerResponse{}})
 		return
 	}
 
@@ -78,20 +100,20 @@ func (h *WorkerHandler) List(w http.ResponseWriter, r *http.Request) {
 	for _, r := range results {
 		workers = append(workers, toWorkerResponse(&r))
 	}
-	writeJSON(w, http.StatusOK, WorkerListResponse{Workers: workers})
+	httputil.WriteJSON(w, http.StatusOK, WorkerListResponse{Workers: workers})
 }
 
 // Status handles GET /workers/{name}.
 func (h *WorkerHandler) Status(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
-		writeError(w, http.StatusBadRequest, "worker name is required")
+		httputil.WriteError(w, http.StatusBadRequest, "worker name is required")
 		return
 	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
@@ -102,20 +124,20 @@ func (h *WorkerHandler) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, toWorkerResponse(result))
+	httputil.WriteJSON(w, http.StatusOK, toWorkerResponse(result))
 }
 
 // Start handles POST /workers/{name}/start.
 func (h *WorkerHandler) Start(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
-		writeError(w, http.StatusBadRequest, "worker name is required")
+		httputil.WriteError(w, http.StatusBadRequest, "worker name is required")
 		return
 	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
@@ -132,13 +154,13 @@ func (h *WorkerHandler) Start(w http.ResponseWriter, r *http.Request) {
 func (h *WorkerHandler) Stop(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
-		writeError(w, http.StatusBadRequest, "worker name is required")
+		httputil.WriteError(w, http.StatusBadRequest, "worker name is required")
 		return
 	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
@@ -155,13 +177,13 @@ func (h *WorkerHandler) Stop(w http.ResponseWriter, r *http.Request) {
 func (h *WorkerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if name == "" {
-		writeError(w, http.StatusBadRequest, "worker name is required")
+		httputil.WriteError(w, http.StatusBadRequest, "worker name is required")
 		return
 	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, err.Error())
+		httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
@@ -171,10 +193,12 @@ func (h *WorkerHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.keyStore != nil {
+		h.keyStore.RemoveWorkerKey(name)
+	}
+
 	w.WriteHeader(http.StatusNoContent)
 }
-
-// --- helpers ---
 
 func toWorkerResponse(r *backend.WorkerResult) WorkerResponse {
 	return WorkerResponse{
@@ -187,26 +211,13 @@ func toWorkerResponse(r *backend.WorkerResult) WorkerResponse {
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("[WARN] failed to write JSON response: %v", err)
-	}
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, ErrorResponse{Message: message})
-}
-
-// writeBackendError maps typed backend errors to appropriate HTTP status codes.
 func writeBackendError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, backend.ErrConflict):
-		writeError(w, http.StatusConflict, err.Error())
+		httputil.WriteError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, backend.ErrNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
+		httputil.WriteError(w, http.StatusNotFound, err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 	}
 }
