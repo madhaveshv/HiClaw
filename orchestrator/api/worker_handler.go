@@ -34,10 +34,6 @@ func (h *WorkerHandler) Create(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if req.Image == "" {
-		httputil.WriteError(w, http.StatusBadRequest, "image is required")
-		return
-	}
 
 	b, err := h.registry.GetWorkerBackend(r.Context(), req.Backend)
 	if err != nil {

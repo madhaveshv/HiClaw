@@ -122,6 +122,12 @@ func (s *SAEBackend) Create(_ context.Context, req CreateRequest) (*WorkerResult
 		}
 	}
 
+	// SAE backend auto-injects runtime identifier so workers know they're on cloud
+	if req.Env == nil {
+		req.Env = make(map[string]string)
+	}
+	req.Env["HICLAW_RUNTIME"] = "aliyun"
+
 	envList := s.buildEnvList(req.Env)
 
 	saeReq := &sae.CreateApplicationRequest{}

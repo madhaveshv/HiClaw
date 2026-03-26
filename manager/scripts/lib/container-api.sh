@@ -6,7 +6,7 @@
 # Docker exec/logs operations still use Docker API passthrough.
 #
 # Required:
-#   HICLAW_CONTAINER_API  - orchestrator URL (e.g. http://hiclaw-orchestrator:2375)
+#   HICLAW_ORCHESTRATOR_URL  - orchestrator URL (e.g. http://hiclaw-orchestrator:2375)
 #
 # Usage:
 #   source /opt/hiclaw/scripts/lib/container-api.sh
@@ -14,7 +14,7 @@
 #   worker_backend_status "alice"
 #   worker_backend_delete "alice"
 
-CONTAINER_API_BASE="${HICLAW_CONTAINER_API:-http://localhost:2375}"
+CONTAINER_API_BASE="${HICLAW_ORCHESTRATOR_URL:-http://localhost:2375}"
 WORKER_CONTAINER_PREFIX="hiclaw-worker-"
 
 _log() {

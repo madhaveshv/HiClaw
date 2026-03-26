@@ -166,8 +166,9 @@ func TestCreateWorkerMissingImage(t *testing.T) {
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d", w.Code)
+	// Image is optional — backend provides default
+	if w.Code != http.StatusCreated {
+		t.Errorf("expected 201, got %d", w.Code)
 	}
 }
 

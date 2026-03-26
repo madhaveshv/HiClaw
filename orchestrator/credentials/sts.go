@@ -62,15 +62,16 @@ func (s *STSService) IssueWorkerToken(ctx context.Context, workerName string) (*
 	}
 
 	form := url.Values{
-		"Action":           {"AssumeRoleWithOIDC"},
-		"Format":           {"JSON"},
-		"Version":          {"2015-04-01"},
-		"RoleArn":          {s.config.RoleArn},
-		"OIDCProviderArn":  {s.config.OIDCProviderArn},
-		"OIDCToken":        {strings.TrimSpace(string(oidcToken))},
-		"RoleSessionName":  {fmt.Sprintf("hiclaw-worker-%s", workerName)},
-		"DurationSeconds":  {"3600"},
-		"Policy":           {policy},
+		"Action":          {"AssumeRoleWithOIDC"},
+		"Format":          {"JSON"},
+		"Version":         {"2015-04-01"},
+		"Timestamp":       {time.Now().UTC().Format("2006-01-02T15:04:05Z")},
+		"RoleArn":         {s.config.RoleArn},
+		"OIDCProviderArn": {s.config.OIDCProviderArn},
+		"OIDCToken":       {strings.TrimSpace(string(oidcToken))},
+		"RoleSessionName": {fmt.Sprintf("hiclaw-worker-%s", workerName)},
+		"DurationSeconds": {"3600"},
+		"Policy":          {policy},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))

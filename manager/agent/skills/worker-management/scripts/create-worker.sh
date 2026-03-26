@@ -787,15 +787,13 @@ elif container_api_available; then
         | if $oss_bucket != "" then . + { "HICLAW_OSS_BUCKET": $oss_bucket, "HICLAW_REGION": $region } else . end
         | if $skills_api_url != "" then . + { "SKILLS_API_URL": $skills_api_url } else . end
         | if $console_port != "" then . + { "HICLAW_CONSOLE_PORT": $console_port } else . end
-        | if $runtime == "copaw" then
-            . + { "HICLAW_RUNTIME": "aliyun" }
-          else
+        | if $runtime != "copaw" then
             . + {
                 "OPENCLAW_DISABLE_BONJOUR": "1",
                 "OPENCLAW_MDNS_HOSTNAME": ("hiclaw-w-" + $worker_name),
                 "HOME": ("/root/hiclaw-fs/agents/" + $worker_name)
             }
-          end')
+          else . end')
 
     # Build create request body
     CREATE_BODY=$(jq -cn \
