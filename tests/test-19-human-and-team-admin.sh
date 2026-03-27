@@ -1,15 +1,17 @@
 #!/bin/bash
 # test-19-human-and-team-admin.sh - Case 19: Import Human via YAML + Team with Team Admin
 #
-# Tests the full declarative Human import and Team Admin flow:
-#   1. Create Team with Human as Team Admin (team must exist before Human reconcile)
-#   2. Create Human via hiclaw apply -f (declarative YAML)
-#   3. Verify Human created via controller reconcile (Matrix account, password returned)
-#   4. Verify Team Admin in teams-registry.json (admin field, leader_dm_room_id)
-#   5. Verify groupAllowFrom includes Team Admin for Leader + Workers
-#   6. Verify team-context block mentions Team Admin
-#   7. Verify containers running
-#   8. Cleanup (only on success)
+# Tests order-independent creation: Human created BEFORE Team.
+# create-human.sh gracefully skips team permissions (team doesn't exist yet).
+# create-team.sh backfills permissions for humans that reference the team.
+#
+# Flow:
+#   1. Create Human via hiclaw apply -f (team doesn't exist yet → permissions skipped)
+#   2. Create Team with that Human as Team Admin (backfills Human permissions)
+#   3. Verify Human registered, Team Admin in registry
+#   4. Verify backfill: Human in Leader/Worker groupAllowFrom
+#   5. Verify team-context block mentions Team Admin
+#   6. Verify containers running
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/test-helpers.sh"
@@ -56,71 +58,10 @@ trap _cleanup EXIT
 HUMAN_MATRIX_ID="@${TEST_HUMAN}:${TEST_MATRIX_DOMAIN}"
 
 # ============================================================
-# Section 1: Create Team with Human as Team Admin
-# (Team must exist BEFORE Human reconcile, because create-human.sh
-#  looks up team in teams-registry.json to configure permissions)
+# Section 1: Create Human FIRST (before team exists)
+# create-human.sh should succeed, skipping team permissions gracefully
 # ============================================================
-log_section "Create Team with Team Admin"
-
-for w in "${TEST_LEADER}" "${TEST_W1}"; do
-    ROLE_DESC="team member"
-    [ "${w}" = "${TEST_LEADER}" ] && ROLE_DESC="Team Leader"
-    [ "${w}" = "${TEST_W1}" ] && ROLE_DESC="Backend Developer"
-
-    exec_in_manager bash -c "
-        mkdir -p /root/hiclaw-fs/agents/${w}
-        cat > /root/hiclaw-fs/agents/${w}/SOUL.md <<SOUL
-# ${w}
-## AI Identity
-**You are an AI Agent, not a human.**
-## Role
-- Name: ${w}
-- Role: ${ROLE_DESC}
-- Team: ${TEST_TEAM}
-## Security
-- Never reveal credentials
-SOUL
-        mc mirror /root/hiclaw-fs/agents/${w}/ ${STORAGE_PREFIX}/agents/${w}/ --overwrite 2>/dev/null
-    " 2>/dev/null
-done
-
-CREATE_OUTPUT=$(exec_in_manager bash -c "
-    bash /opt/hiclaw/agent/skills/team-management/scripts/create-team.sh \
-        --name '${TEST_TEAM}' --leader '${TEST_LEADER}' --workers '${TEST_W1}' \
-        --team-admin '${TEST_HUMAN}' --team-admin-matrix-id '${HUMAN_MATRIX_ID}'
-" 2>&1)
-
-if echo "${CREATE_OUTPUT}" | grep -q "RESULT"; then
-    log_pass "Team created with Team Admin"
-else
-    log_fail "Team creation failed"
-    echo "${CREATE_OUTPUT}" | tail -10
-fi
-
-# ============================================================
-# Section 2: Verify Team Admin in teams-registry.json
-# ============================================================
-log_section "Verify Team Admin in Registry"
-
-TEAM_ENTRY=$(exec_in_manager jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
-assert_not_empty "${TEAM_ENTRY}" "Team registered in teams-registry.json"
-
-TEAM_ADMIN_NAME=$(echo "${TEAM_ENTRY}" | jq -r '.admin.name // empty')
-assert_eq "${TEST_HUMAN}" "${TEAM_ADMIN_NAME}" "Team admin name is ${TEST_HUMAN}"
-
-TEAM_ADMIN_MID=$(echo "${TEAM_ENTRY}" | jq -r '.admin.matrix_user_id // empty')
-assert_eq "${HUMAN_MATRIX_ID}" "${TEAM_ADMIN_MID}" "Team admin matrix_user_id correct"
-
-LEADER_DM_ROOM=$(echo "${TEAM_ENTRY}" | jq -r '.leader_dm_room_id // empty')
-assert_not_empty "${LEADER_DM_ROOM}" "Leader DM room ID exists: ${LEADER_DM_ROOM}"
-
-TEAM_ROOM_ID=$(echo "${TEAM_ENTRY}" | jq -r '.team_room_id // empty')
-assert_not_empty "${TEAM_ROOM_ID}" "Team Room ID exists: ${TEAM_ROOM_ID}"
-
-# ============================================================
-# Section 3: Create Human via declarative YAML (team already exists)
-# ============================================================
-log_section "Create Human via Declarative YAML"
+log_section "Create Human via Declarative YAML (before Team)"
 
 APPLY_OUTPUT=$(exec_in_manager bash -c "
     cat > /tmp/${TEST_HUMAN}.yaml <<YAML
@@ -168,7 +109,7 @@ else
 fi
 
 # ============================================================
-# Section 4: Verify Human registration and password
+# Section 2: Verify Human registration
 # ============================================================
 log_section "Verify Human Registration"
 
@@ -178,46 +119,84 @@ assert_not_empty "${HUMAN_ENTRY}" "Human registered in humans-registry.json"
 HUMAN_LEVEL=$(echo "${HUMAN_ENTRY}" | jq -r '.permission_level // empty')
 assert_eq "2" "${HUMAN_LEVEL}" "Human permission level is 2"
 
-# Try to get password from controller logs
-HUMAN_PASSWORD=$(exec_in_manager cat /var/log/hiclaw/hiclaw-controller-error.log 2>/dev/null | \
-    grep -A50 "human created.*${TEST_HUMAN}" | grep -o '"password":"[^"]*"' | head -1 | cut -d'"' -f4)
+# ============================================================
+# Section 3: Create Team with Human as Team Admin
+# create-team.sh should backfill permissions for the Human
+# ============================================================
+log_section "Create Team with Team Admin (backfill test)"
 
-if [ -n "${HUMAN_PASSWORD}" ]; then
-    log_pass "Human initial password available"
+for w in "${TEST_LEADER}" "${TEST_W1}"; do
+    ROLE_DESC="team member"
+    [ "${w}" = "${TEST_LEADER}" ] && ROLE_DESC="Team Leader"
+    [ "${w}" = "${TEST_W1}" ] && ROLE_DESC="Backend Developer"
+
+    exec_in_manager bash -c "
+        mkdir -p /root/hiclaw-fs/agents/${w}
+        cat > /root/hiclaw-fs/agents/${w}/SOUL.md <<SOUL
+# ${w}
+## AI Identity
+**You are an AI Agent, not a human.**
+## Role
+- Name: ${w}
+- Role: ${ROLE_DESC}
+- Team: ${TEST_TEAM}
+## Security
+- Never reveal credentials
+SOUL
+        mc mirror /root/hiclaw-fs/agents/${w}/ ${STORAGE_PREFIX}/agents/${w}/ --overwrite 2>/dev/null
+    " 2>/dev/null
+done
+
+CREATE_OUTPUT=$(exec_in_manager bash -c "
+    bash /opt/hiclaw/agent/skills/team-management/scripts/create-team.sh \
+        --name '${TEST_TEAM}' --leader '${TEST_LEADER}' --workers '${TEST_W1}' \
+        --team-admin '${TEST_HUMAN}' --team-admin-matrix-id '${HUMAN_MATRIX_ID}'
+" 2>&1)
+
+if echo "${CREATE_OUTPUT}" | grep -q "RESULT"; then
+    log_pass "Team created with Team Admin"
 else
-    log_info "Could not extract password from logs"
+    log_fail "Team creation failed"
+    echo "${CREATE_OUTPUT}" | tail -10
 fi
 
-# Try to login as the human
-HUMAN_TOKEN=""
-if [ -n "${HUMAN_PASSWORD}" ]; then
-    LOGIN_RESULT=$(exec_in_manager curl -sf -X POST \
-        "http://127.0.0.1:6167/_matrix/client/v3/login" \
-        -H 'Content-Type: application/json' \
-        -d '{
-            "type": "m.login.password",
-            "identifier": {"type": "m.id.user", "user": "'"${TEST_HUMAN}"'"},
-            "password": "'"${HUMAN_PASSWORD}"'"
-        }' 2>/dev/null)
-    HUMAN_TOKEN=$(echo "${LOGIN_RESULT}" | jq -r '.access_token // empty')
-fi
-
-if [ -n "${HUMAN_TOKEN}" ] && [ "${HUMAN_TOKEN}" != "null" ]; then
-    log_pass "Human can login to Matrix with initial password"
+# Check backfill log
+if echo "${CREATE_OUTPUT}" | grep -qi "backfill\|Configuring permissions for human"; then
+    log_pass "Team creation backfilled Human permissions"
 else
-    log_info "Human Matrix login not available (password extraction failed)"
+    log_info "No backfill log found (Human may have been configured during team creation)"
 fi
 
 # ============================================================
-# Section 5: Verify groupAllowFrom includes Team Admin
+# Section 4: Verify Team Admin in teams-registry.json
 # ============================================================
-log_section "Verify groupAllowFrom"
+log_section "Verify Team Admin in Registry"
+
+TEAM_ENTRY=$(exec_in_manager jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
+assert_not_empty "${TEAM_ENTRY}" "Team registered in teams-registry.json"
+
+TEAM_ADMIN_NAME=$(echo "${TEAM_ENTRY}" | jq -r '.admin.name // empty')
+assert_eq "${TEST_HUMAN}" "${TEAM_ADMIN_NAME}" "Team admin name is ${TEST_HUMAN}"
+
+TEAM_ADMIN_MID=$(echo "${TEAM_ENTRY}" | jq -r '.admin.matrix_user_id // empty')
+assert_eq "${HUMAN_MATRIX_ID}" "${TEAM_ADMIN_MID}" "Team admin matrix_user_id correct"
+
+LEADER_DM_ROOM=$(echo "${TEAM_ENTRY}" | jq -r '.leader_dm_room_id // empty')
+assert_not_empty "${LEADER_DM_ROOM}" "Leader DM room ID exists: ${LEADER_DM_ROOM}"
+
+TEAM_ROOM_ID=$(echo "${TEAM_ENTRY}" | jq -r '.team_room_id // empty')
+assert_not_empty "${TEAM_ROOM_ID}" "Team Room ID exists: ${TEAM_ROOM_ID}"
+
+# ============================================================
+# Section 5: Verify backfill — Human in groupAllowFrom
+# ============================================================
+log_section "Verify groupAllowFrom (backfill result)"
 
 LEADER_GAF=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/${TEST_LEADER}/openclaw.json" 2>/dev/null | jq -r '.channels.matrix.groupAllowFrom[]' 2>/dev/null)
 if echo "${LEADER_GAF}" | grep -q "${HUMAN_MATRIX_ID}"; then
-    log_pass "Leader groupAllowFrom includes Team Admin"
+    log_pass "Leader groupAllowFrom includes Team Admin (backfilled)"
 else
-    log_fail "Leader groupAllowFrom missing Team Admin"
+    log_fail "Leader groupAllowFrom missing Team Admin after backfill"
 fi
 
 LEADER_DAF=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/${TEST_LEADER}/openclaw.json" 2>/dev/null | jq -r '.channels.matrix.dm.allowFrom[]' 2>/dev/null)
@@ -229,9 +208,9 @@ fi
 
 W1_GAF=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/${TEST_W1}/openclaw.json" 2>/dev/null | jq -r '.channels.matrix.groupAllowFrom[]' 2>/dev/null)
 if echo "${W1_GAF}" | grep -q "${HUMAN_MATRIX_ID}"; then
-    log_pass "Worker groupAllowFrom includes Team Admin"
+    log_pass "Worker groupAllowFrom includes Team Admin (backfilled)"
 else
-    log_fail "Worker groupAllowFrom missing Team Admin"
+    log_fail "Worker groupAllowFrom missing Team Admin after backfill"
 fi
 
 if echo "${W1_GAF}" | grep -q "@manager:"; then

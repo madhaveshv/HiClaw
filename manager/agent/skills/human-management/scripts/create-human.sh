@@ -211,7 +211,14 @@ if [ "${LEVEL}" = "2" ]; then
             [ -z "${team}" ] && continue
 
             if [ ! -f "${TEAMS_REGISTRY}" ]; then
-                log "    WARNING: teams-registry.json not found"
+                log "    Team registry not found, skipping team ${team} (will be configured when team is created)"
+                continue
+            fi
+
+            # Check if team exists in registry
+            team_exists=$(jq -r --arg t "${team}" '.teams[$t] // empty' "${TEAMS_REGISTRY}" 2>/dev/null)
+            if [ -z "${team_exists}" ]; then
+                log "    Team ${team} not yet created, skipping permissions (will be configured when team is created)"
                 continue
             fi
 

@@ -343,6 +343,71 @@ fi
 bash /opt/hiclaw/agent/skills/team-management/scripts/manage-teams-registry.sh "${REGISTRY_ARGS[@]}"
 
 # ============================================================
+# Step 6: Backfill permissions for humans that reference this team
+# If a Human was created before this team, their permissions were
+# skipped. Now that the team exists, configure them.
+# ============================================================
+HUMANS_REGISTRY="${HOME}/humans-registry.json"
+if [ -f "${HUMANS_REGISTRY}" ]; then
+    PENDING_HUMANS=$(jq -r --arg t "${TEAM_NAME}" \
+        '.humans | to_entries[] | select(.value.accessible_teams // [] | index($t)) | .key' \
+        "${HUMANS_REGISTRY}" 2>/dev/null)
+
+    if [ -n "${PENDING_HUMANS}" ]; then
+        log "Step 6: Backfilling permissions for humans referencing ${TEAM_NAME}..."
+        ensure_mc_credentials 2>/dev/null || true
+
+        for _human_name in ${PENDING_HUMANS}; do
+            _human_mid=$(jq -r --arg h "${_human_name}" '.humans[$h].matrix_user_id // empty' "${HUMANS_REGISTRY}" 2>/dev/null)
+            [ -z "${_human_mid}" ] && continue
+            log "  Configuring permissions for human: ${_human_name} (${_human_mid})"
+
+            # Add human to Leader's groupAllowFrom
+            if [ -f "${LEADER_CONFIG}" ]; then
+                jq --arg h "${_human_mid}" \
+                    'if (.channels.matrix.groupAllowFrom | index($h)) then .
+                     else .channels.matrix.groupAllowFrom += [$h]
+                     end' \
+                    "${LEADER_CONFIG}" > /tmp/leader-human-tmp.json
+                mv /tmp/leader-human-tmp.json "${LEADER_CONFIG}"
+                mc cp "${LEADER_CONFIG}" "${HICLAW_STORAGE_PREFIX}/agents/${LEADER_NAME}/openclaw.json" 2>/dev/null || true
+            fi
+
+            # Add human to each Worker's groupAllowFrom
+            for w_name in "${WORKER_NAMES[@]}"; do
+                w_name=$(echo "${w_name}" | tr -d ' ')
+                [ -z "${w_name}" ] && continue
+                W_CONFIG="/root/hiclaw-fs/agents/${w_name}/openclaw.json"
+                if [ -f "${W_CONFIG}" ]; then
+                    jq --arg h "${_human_mid}" \
+                        'if (.channels.matrix.groupAllowFrom | index($h)) then .
+                         else .channels.matrix.groupAllowFrom += [$h]
+                         end' \
+                        "${W_CONFIG}" > /tmp/worker-human-tmp.json
+                    mv /tmp/worker-human-tmp.json "${W_CONFIG}"
+                    mc cp "${W_CONFIG}" "${HICLAW_STORAGE_PREFIX}/agents/${w_name}/openclaw.json" 2>/dev/null || true
+                fi
+            done
+
+            # Invite human to Team Room
+            if [ -n "${TEAM_ROOM_ID}" ]; then
+                ROOM_ENC=$(echo "${TEAM_ROOM_ID}" | sed 's/!/%21/g')
+                curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${ROOM_ENC}/invite" \
+                    -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+                    -H 'Content-Type: application/json' \
+                    -d '{"user_id": "'"${_human_mid}"'"}' 2>/dev/null || true
+            fi
+
+            log "    Permissions configured for ${_human_name}"
+        done
+    else
+        log "Step 6: No pending humans for ${TEAM_NAME} (skipped)"
+    fi
+else
+    log "Step 6: No humans-registry.json found (skipped)"
+fi
+
+# ============================================================
 # Output JSON result
 # ============================================================
 WORKERS_JSON="[]"
