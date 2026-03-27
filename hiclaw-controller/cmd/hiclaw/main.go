@@ -62,60 +62,177 @@ func configDir(kind string) string {
 	return fmt.Sprintf("%s/hiclaw-config/%ss/", storagePrefix(), kind)
 }
 
-// --- apply ---
+// --- apply (parent command with subcommands) ---
 
 func applyCmd() *cobra.Command {
 	var files []string
-	var zipFile string
-	var name string
 	var prune bool
 	var dryRun bool
 	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "apply",
-		Short: "Apply resource configuration from YAML files or ZIP packages",
-		Long: `Apply creates or updates resources defined in YAML files.
-Use --zip with --name to import a legacy Worker/Team package (manifest.json).
-Use --prune to also delete resources not present in the YAML (full sync).`,
+		Short: "Apply resource configuration",
+		Long: `Apply creates or updates resources.
+
+  hiclaw apply -f resource.yaml              # from YAML file
+  hiclaw apply -f resource.yaml --prune      # full sync (delete extras)
+  hiclaw apply worker --name alice --zip w.zip
+  hiclaw apply worker --name alice --package nacos://inst/ns/spec/v1`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Handle --zip: convert manifest.json to YAML, upload ZIP + YAML to MinIO
-			if zipFile != "" {
-				if name == "" {
-					return fmt.Errorf("--name is required when using --zip (uniquely identifies the worker)")
+			// If -f is provided, run generic YAML apply
+			if len(files) > 0 {
+				resources, err := loadResources(files)
+				if err != nil {
+					return err
 				}
-				return applyZip(zipFile, name, dryRun)
+
+				if dryRun {
+					fmt.Println("Dry-run mode: showing planned changes")
+					fmt.Println()
+				}
+
+				if kubeMode == "incluster" {
+					return applyInCluster(resources, prune, dryRun)
+				}
+				return applyEmbedded(resources, prune, dryRun, yes)
 			}
 
-			if len(files) == 0 {
-				return fmt.Errorf("at least one -f/--file or --zip is required")
-			}
-
-			resources, err := loadResources(files)
-			if err != nil {
-				return err
-			}
-
-			if dryRun {
-				fmt.Println("Dry-run mode: showing planned changes")
-				fmt.Println()
-			}
-
-			if kubeMode == "incluster" {
-				return applyInCluster(resources, prune, dryRun)
-			}
-			return applyEmbedded(resources, prune, dryRun, yes)
+			// No -f and no subcommand → show help
+			return cmd.Help()
 		},
 	}
 
 	cmd.Flags().StringArrayVarP(&files, "file", "f", nil, "YAML resource file(s)")
-	cmd.Flags().StringVar(&zipFile, "zip", "", "Legacy ZIP package (manifest.json)")
-	cmd.Flags().StringVar(&name, "name", "", "Resource name (required with --zip)")
 	cmd.Flags().BoolVar(&prune, "prune", false, "Delete resources not in YAML")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show changes without applying")
 	cmd.Flags().BoolVar(&yes, "yes", false, "Skip delete confirmation")
 
+	// Add resource-specific subcommands
+	cmd.AddCommand(applyWorkerCmd())
+
 	return cmd
+}
+
+// --- apply worker ---
+
+func applyWorkerCmd() *cobra.Command {
+	var name string
+	var model string
+	var zipFile string
+	var packageURI string
+	var skills string
+	var mcpServers string
+	var runtime string
+	var dryRun bool
+
+	cmd := &cobra.Command{
+		Use:   "worker",
+		Short: "Apply a Worker resource",
+		Long: `Create or update a Worker from CLI parameters.
+
+  hiclaw apply worker --name alice --zip worker.zip
+  hiclaw apply worker --name alice --model claude-sonnet-4-6 --package nacos://inst/ns/spec/v1
+  hiclaw apply worker --name bob --model qwen3.5-plus
+  hiclaw apply worker --name charlie --model gpt-5-mini --skills github-operations --mcp-servers github`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if name == "" {
+				return fmt.Errorf("--name is required")
+			}
+
+			// --zip: legacy ZIP import (upload ZIP + generate YAML from manifest)
+			if zipFile != "" {
+				return applyZip(zipFile, name, dryRun)
+			}
+
+			// Generate Worker YAML from CLI params
+			if model == "" {
+				model = "qwen3.5-plus"
+			}
+
+			return applyWorkerFromParams(name, model, packageURI, skills, mcpServers, runtime, dryRun)
+		},
+	}
+
+	cmd.Flags().StringVar(&name, "name", "", "Worker name (required)")
+	cmd.Flags().StringVar(&model, "model", "", "LLM model ID (default: qwen3.5-plus)")
+	cmd.Flags().StringVar(&zipFile, "zip", "", "Local ZIP package (manifest.json)")
+	cmd.Flags().StringVar(&packageURI, "package", "", "Remote package URI (nacos://, http://, oss://)")
+	cmd.Flags().StringVar(&skills, "skills", "", "Comma-separated built-in skills")
+	cmd.Flags().StringVar(&mcpServers, "mcp-servers", "", "Comma-separated MCP servers")
+	cmd.Flags().StringVar(&runtime, "runtime", "openclaw", "Agent runtime (openclaw|copaw)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show changes without applying")
+
+	return cmd
+}
+
+// applyWorkerFromParams generates a Worker YAML from CLI params and writes to MinIO
+func applyWorkerFromParams(name, model, packageURI, skills, mcpServers, runtime string, dryRun bool) error {
+	// Build YAML
+	var specLines []string
+	specLines = append(specLines, fmt.Sprintf("  model: %s", model))
+	if runtime != "" && runtime != "openclaw" {
+		specLines = append(specLines, fmt.Sprintf("  runtime: %s", runtime))
+	}
+	if packageURI != "" {
+		specLines = append(specLines, fmt.Sprintf("  package: %s", packageURI))
+	}
+	if skills != "" {
+		specLines = append(specLines, "  skills:")
+		for _, s := range strings.Split(skills, ",") {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				specLines = append(specLines, fmt.Sprintf("    - %s", s))
+			}
+		}
+	}
+	if mcpServers != "" {
+		specLines = append(specLines, "  mcpServers:")
+		for _, m := range strings.Split(mcpServers, ",") {
+			m = strings.TrimSpace(m)
+			if m != "" {
+				specLines = append(specLines, fmt.Sprintf("    - %s", m))
+			}
+		}
+	}
+
+	yamlContent := fmt.Sprintf(`apiVersion: hiclaw.io/v1beta1
+kind: Worker
+metadata:
+  name: %s
+spec:
+%s
+`, name, strings.Join(specLines, "\n"))
+
+	if dryRun {
+		fmt.Printf("Would apply Worker/%s:\n%s", name, yamlContent)
+		return nil
+	}
+
+	dest := configPath("worker", name)
+
+	// Check if exists
+	_, existErr := mcExec("stat", dest)
+	action := "created"
+	if existErr == nil {
+		action = "configured"
+		fmt.Printf("  WARNING: worker/%s already exists. This update will:\n", name)
+		fmt.Printf("    - Overwrite all config (model, openclaw.json, SOUL.md)\n")
+		fmt.Printf("    - Skills: merged (existing updated, new added, old kept)\n")
+		fmt.Printf("    - Memory: preserved (MEMORY.md and memory/ NOT overwritten)\n")
+	}
+
+	tmpFile, err := writeTempYAML(yamlContent)
+	if err != nil {
+		return fmt.Errorf("failed to write temp YAML: %w", err)
+	}
+	defer os.Remove(tmpFile)
+
+	if _, err := mcExec("cp", tmpFile, dest); err != nil {
+		return fmt.Errorf("failed to upload worker/%s to MinIO: %w", name, err)
+	}
+	fmt.Printf("  worker/%s %s\n", name, action)
+	return nil
 }
 
 // applyEmbedded writes YAML files to MinIO hiclaw-config/{kind}s/{name}.yaml
@@ -231,16 +348,13 @@ func listMinIOResources(kind string) ([]string, error) {
 			continue
 		}
 		// mc ls --json outputs {"key":"name.yaml",...}
-		// Simple extraction without json dependency
 		if idx := strings.Index(line, `"key":"`); idx >= 0 {
 			rest := line[idx+7:]
 			if end := strings.Index(rest, `"`); end >= 0 {
 				filename := rest[:end]
-				if strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml") {
+				if (strings.HasSuffix(filename, ".yaml") || strings.HasSuffix(filename, ".yml")) && filename != ".gitkeep" {
 					name := strings.TrimSuffix(strings.TrimSuffix(filename, ".yaml"), ".yml")
-					if name != ".gitkeep" && name != "" {
-						names = append(names, name)
-					}
+					names = append(names, name)
 				}
 			}
 		}
@@ -483,13 +597,12 @@ func applyZip(zipPath string, name string, dryRun bool) error {
 		return fmt.Errorf("manifest.json not found in ZIP: %w", err)
 	}
 
-	// Simple JSON field extraction (avoid heavy dependency)
 	manifestType := jsonField(string(manifestData), "type")
 	if manifestType == "" {
-		manifestType = "worker" // default for legacy packages
+		manifestType = "worker"
 	}
 
-	// 3. Convert manifest to CRD YAML using --name as the resource name
+	// 3. Convert manifest to CRD YAML
 	var yamlContent string
 	var kind string
 
@@ -498,7 +611,7 @@ func applyZip(zipPath string, name string, dryRun bool) error {
 		model = "qwen3.5-plus"
 	}
 
-	// Compute MD5 of ZIP for content-addressable storage
+	// Compute SHA256 of ZIP for content-addressable storage
 	zipData, err := os.ReadFile(zipPath)
 	if err != nil {
 		return fmt.Errorf("failed to read ZIP for hashing: %w", err)
@@ -556,7 +669,7 @@ spec:
 		action = "updated"
 		fmt.Printf("  WARNING: %s/%s already exists. This update will:\n", kind, name)
 		fmt.Printf("    - Overwrite all config (model, openclaw.json, SOUL.md)\n")
-		fmt.Printf("    - Skills: additive only (new skills added, existing skills NOT removed)\n")
+		fmt.Printf("    - Skills: merged (existing updated, new added, old kept)\n")
 		fmt.Printf("    - Memory: preserved (MEMORY.md and memory/ NOT overwritten)\n")
 	}
 
