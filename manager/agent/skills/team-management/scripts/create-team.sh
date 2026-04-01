@@ -513,6 +513,70 @@ fi
 bash /opt/hiclaw/agent/skills/team-management/scripts/manage-teams-registry.sh "${REGISTRY_ARGS[@]}"
 
 # ============================================================
+# Step 5b: Re-inject Leader's team-context with room IDs
+# Leader was created before team rooms existed, so its AGENTS.md
+# team-context is missing Team Room, Leader DM, and worker details.
+# Now that everything is registered, re-inject the full context.
+# ============================================================
+log "Step 5b: Re-injecting Leader team-context with room IDs..."
+_leader_agents_minio="${HICLAW_STORAGE_PREFIX}/agents/${LEADER_NAME}/AGENTS.md"
+_leader_agents_tmp=$(mktemp /tmp/leader-agents-XXXXXX.md)
+_leader_ctx_tmp=$(mktemp /tmp/leader-ctx-XXXXXX.md)
+
+# Build worker list with room IDs
+_worker_lines=""
+for i in "${!WORKER_NAMES[@]}"; do
+    _wn=$(echo "${WORKER_NAMES[$i]}" | tr -d ' ')
+    [ -z "${_wn}" ] && continue
+    _wr="${WORKER_ROOM_IDS[$i]:-unknown}"
+    _worker_lines="${_worker_lines}
+  - @${_wn}:${MATRIX_DOMAIN} — Room: ${_wr}"
+done
+
+{
+    echo ""
+    echo "<!-- hiclaw-team-context-start -->"
+    echo "## Coordination"
+    echo ""
+    echo "- **Upstream coordinator**: @manager:${MATRIX_DOMAIN} (Manager) — you receive tasks from Manager"
+    [ -n "${TEAM_ADMIN_MID}" ] && echo "- **Team Admin**: ${TEAM_ADMIN_MID} — can assign tasks and make decisions within the team"
+    echo "- **Team**: ${TEAM_NAME}"
+    echo "- **Team Room**: ${TEAM_ROOM_ID} — @mention workers here for task assignment"
+    [ -n "${LEADER_DM_ROOM_ID}" ] && echo "- **Leader DM**: ${LEADER_DM_ROOM_ID} — Team Admin communicates with you here"
+    echo "- **Team Workers**:${_worker_lines}"
+    echo "- You decompose tasks from Manager or Team Admin and assign sub-tasks to your team workers"
+    echo "- @mention workers in the Team Room for task assignment"
+    echo "- Report results to Manager (in Leader Room) or Team Admin (in Leader DM) based on task source"
+    echo "- @mention Manager only for: task completion, blockers, escalations"
+    echo "<!-- hiclaw-team-context-end -->"
+} > "${_leader_ctx_tmp}"
+
+if mc cp "${_leader_agents_minio}" "${_leader_agents_tmp}" 2>/dev/null; then
+    _leader_clean=$(mktemp /tmp/leader-clean-XXXXXX.md)
+    awk '/<!-- hiclaw-team-context-start -->/{skip=1; next} /<!-- hiclaw-team-context-end -->/{skip=0; next} !skip' \
+        "${_leader_agents_tmp}" > "${_leader_clean}"
+
+    _leader_final=$(mktemp /tmp/leader-final-XXXXXX.md)
+    if grep -q '^<!-- hiclaw-builtin-end -->' "${_leader_clean}"; then
+        awk -v ctx_file="${_leader_ctx_tmp}" '
+            {print}
+            /^<!-- hiclaw-builtin-end -->$/ {
+                while ((getline line < ctx_file) > 0) print line
+                close(ctx_file)
+            }
+        ' "${_leader_clean}" > "${_leader_final}"
+    else
+        cat "${_leader_clean}" "${_leader_ctx_tmp}" > "${_leader_final}"
+    fi
+
+    mc cp "${_leader_final}" "${_leader_agents_minio}" 2>/dev/null \
+        && log "  Leader team-context updated with room IDs" \
+        || log "  WARNING: Failed to update Leader team-context"
+    rm -f "${_leader_clean}" "${_leader_final}"
+fi
+rm -f "${_leader_agents_tmp}" "${_leader_ctx_tmp}"
+
+# ============================================================
 # Step 6: Backfill permissions for humans that reference this team
 # If a Human was created before this team, their permissions were
 # skipped. Now that the team exists, configure them.

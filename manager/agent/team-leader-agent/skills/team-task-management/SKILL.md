@@ -20,6 +20,11 @@ Manage individual tasks within your team. For complex multi-worker tasks with de
 # Find available team workers
 bash ~/skills/team-task-management/scripts/find-team-worker.sh
 
+# Send a message to a specific room with @mention (e.g., assign task in Team Room)
+bash ~/skills/team-task-management/scripts/send-team-message.sh \
+  --room-id '!teamroom:domain' --to '@worker:domain' \
+  --message '@worker:domain Please work on task st-01. Pull spec from teams/{team}/tasks/st-01/spec.md'
+
 # Add a task (use --source manager/team-admin, --parent-task-id, --requester as needed)
 bash ~/skills/team-task-management/scripts/manage-team-state.sh \
   --action add-finite --task-id st-01 --title "Implement auth" \
