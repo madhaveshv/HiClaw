@@ -1,11 +1,36 @@
 ---
 name: team-task-management
-description: Use when you need to assign tasks to team workers, track team task progress, find available workers in your team, or manage team-state.json.
+description: Use when you need to assign tasks to team workers, track team task progress, find available workers in your team, or manage team-state.json. IMPORTANT - you MUST use send-team-message.sh to communicate with workers. Never do worker tasks yourself.
 ---
 
 # Team Task Management
 
 Manage individual tasks within your team. For complex multi-worker tasks with dependencies, use `team-project-management` instead.
+
+## CRITICAL: You Are a Coordinator, Not an Executor
+
+**NEVER write code, design APIs, create deliverables, or do any domain work yourself.**
+Your ONLY job is to:
+1. Decompose tasks into sub-tasks
+2. Assign sub-tasks to workers via `send-team-message.sh`
+3. Monitor progress and aggregate results
+
+If you catch yourself doing a worker's job — STOP and delegate instead.
+
+## How to Assign Tasks to Workers
+
+You MUST use `send-team-message.sh` to @mention workers. Workers ONLY process messages that contain `m.mentions` — they will ignore plain text.
+
+Look up the **Team Room** and **worker Matrix IDs** from your AGENTS.md `## Coordination` section.
+
+```bash
+# Step 1: Create task spec files and push to MinIO
+# Step 2: Send @mention to worker in Team Room
+bash ~/skills/team-task-management/scripts/send-team-message.sh \
+  --room-id '<TEAM_ROOM_ID from your Coordination section>' \
+  --to '@worker-name:domain' \
+  --message '@worker-name:domain New task [st-01]: Design API endpoints. Please file-sync and read teams/{team}/tasks/st-01/spec.md. @mention me when complete.'
+```
 
 ## Task Sources
 
@@ -20,16 +45,16 @@ Manage individual tasks within your team. For complex multi-worker tasks with de
 # Find available team workers
 bash ~/skills/team-task-management/scripts/find-team-worker.sh
 
-# Send a message to a specific room with @mention (e.g., assign task in Team Room)
+# Send @mention to a worker in a room (REQUIRED for task assignment)
 bash ~/skills/team-task-management/scripts/send-team-message.sh \
   --room-id '!teamroom:domain' --to '@worker:domain' \
-  --message '@worker:domain Please work on task st-01. Pull spec from teams/{team}/tasks/st-01/spec.md'
+  --message '@worker:domain Your task message here'
 
-# Add a task (use --source manager/team-admin, --parent-task-id, --requester as needed)
+# Track task state
 bash ~/skills/team-task-management/scripts/manage-team-state.sh \
-  --action add-finite --task-id st-01 --title "Implement auth" \
-  --assigned-to alice --room-id '!room:domain' \
-  --source manager --parent-task-id task-xxx
+  --action add-finite --task-id st-01 --title "Task title" \
+  --assigned-to worker-name --room-id '!room:domain' \
+  --source team-admin --requester '@admin:domain'
 
 # Mark task complete
 bash ~/skills/team-task-management/scripts/manage-team-state.sh \
@@ -41,9 +66,9 @@ bash ~/skills/team-task-management/scripts/manage-team-state.sh --action list
 
 ## Gotchas
 
+- **Use send-team-message.sh for ALL worker communication** — workers ignore messages without m.mentions
 - **Always push to MinIO before notifying workers** — workers need to file-sync to get specs
 - **Always pull from MinIO before reading results** — workers push results there
-- **Always use manage-team-state.sh** for state changes — never edit JSON manually
 - **Route completion by source** — check `source` field to decide where to report
 
 ## References
