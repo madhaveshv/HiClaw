@@ -163,15 +163,86 @@ fi
 _obtain_team_admin_token "${TEAM_ADMIN}"
 
 # ============================================================
-# Step 1: Create Team Leader
+# Step 1: Create Team Room and Leader DM (empty — members invited later)
+# Rooms are created first so room IDs can be passed to create-worker.sh,
+# ensuring Leader's AGENTS.md has full team-context from the start.
 # ============================================================
-log "Step 1: Creating Team Leader (${LEADER_NAME})..."
+log "Step 1: Creating Team Room and Leader DM..."
+MANAGER_MATRIX_ID="@manager:${MATRIX_DOMAIN}"
+ADMIN_MATRIX_ID="@${ADMIN_USER}:${MATRIX_DOMAIN}"
+LEADER_MATRIX_ID="@${LEADER_NAME}:${MATRIX_DOMAIN}"
+
+# E2EE
+ROOM_E2EE_INITIAL_STATE=""
+if [ "${HICLAW_MATRIX_E2EE:-0}" = "1" ] || [ "${HICLAW_MATRIX_E2EE:-}" = "true" ]; then
+    ROOM_E2EE_INITIAL_STATE=',"initial_state":[{"type":"m.room.encryption","state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}]'
+fi
+
+# Create Team Room (Manager-only, members invited in Step 4)
+TEAM_ROOM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
+    -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+    -H 'Content-Type: application/json' \
+    -d '{
+        "name": "Team: '"${TEAM_NAME}"'",
+        "topic": "Team room for '"${TEAM_NAME}"' — Leader + Workers coordination",
+        "preset": "trusted_private_chat",
+        "power_level_content_override": {
+            "users": {
+                "'"${MANAGER_MATRIX_ID}"'": 100
+            }
+        }'"${ROOM_E2EE_INITIAL_STATE}"'
+    }' 2>/dev/null) || _fail "Failed to create Team Room"
+
+TEAM_ROOM_ID=$(echo "${TEAM_ROOM_RESP}" | jq -r '.room_id // empty')
+if [ -z "${TEAM_ROOM_ID}" ]; then
+    _fail "Failed to create Team Room: ${TEAM_ROOM_RESP}"
+fi
+log "  Team Room created: ${TEAM_ROOM_ID}"
+
+# Create Leader DM (Manager-only, members invited in Step 4)
+LEADER_DM_ROOM_ID=""
+if [ -n "${TEAM_ADMIN_MID}" ]; then
+    LEADER_DM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{
+            "name": "Team Admin DM: '"${TEAM_NAME}"'",
+            "topic": "Direct channel between Team Admin and Leader of '"${TEAM_NAME}"'",
+            "preset": "trusted_private_chat",
+            "power_level_content_override": {
+                "users": {
+                    "'"${MANAGER_MATRIX_ID}"'": 100
+                }
+            }'"${ROOM_E2EE_INITIAL_STATE}"'
+        }' 2>/dev/null) || log "  WARNING: Failed to create Leader DM room"
+
+    LEADER_DM_ROOM_ID=$(echo "${LEADER_DM_RESP}" | jq -r '.room_id // empty')
+    if [ -n "${LEADER_DM_ROOM_ID}" ]; then
+        log "  Leader DM room created: ${LEADER_DM_ROOM_ID}"
+    else
+        log "  WARNING: Could not extract Leader DM room_id"
+    fi
+else
+    log "  No Team Admin specified, skipping Leader DM room"
+fi
+
+# ============================================================
+# Step 2: Create Team Leader (with room IDs for AGENTS.md team-context)
+# ============================================================
+log "Step 2: Creating Team Leader (${LEADER_NAME})..."
 LEADER_ARGS=(--name "${LEADER_NAME}" --role team_leader --team "${TEAM_NAME}")
 if [ -n "${LEADER_MODEL}" ]; then
     LEADER_ARGS+=(--model "${LEADER_MODEL}")
 fi
 if [ -n "${TEAM_ADMIN_MID}" ]; then
     LEADER_ARGS+=(--team-admin-matrix-id "${TEAM_ADMIN_MID}")
+fi
+# Pass pre-created room IDs so Leader's AGENTS.md gets full team-context
+if [ -n "${TEAM_ROOM_ID}" ]; then
+    LEADER_ARGS+=(--team-room-id "${TEAM_ROOM_ID}")
+fi
+if [ -n "${LEADER_DM_ROOM_ID}" ]; then
+    LEADER_ARGS+=(--leader-dm-room-id "${LEADER_DM_ROOM_ID}")
 fi
 # Merge team-level + leader-specific comm policy
 if [ -n "${TEAM_CHANNEL_POLICY_JSON}" ] || [ -n "${LEADER_CHANNEL_POLICY_JSON}" ]; then
@@ -200,9 +271,9 @@ fi
 log "  Leader created: room=${LEADER_ROOM_ID}"
 
 # ============================================================
-# Step 2: Create Team Workers
+# Step 3: Create Team Workers
 # ============================================================
-log "Step 2: Creating team workers..."
+log "Step 3: Creating team workers..."
 WORKER_ROOM_IDS=()
 
 for i in "${!WORKER_NAMES[@]}"; do
@@ -252,63 +323,50 @@ for i in "${!WORKER_NAMES[@]}"; do
 done
 
 # ============================================================
-# Step 3: Create Team Room (Leader + Team Admin + all Workers)
-# No Global Admin, no Manager — Team Admin is the authority here
+# Step 4: Invite members into Team Room + Leader DM, then Manager leaves
+# Rooms were created empty in Step 1. Now that all workers exist, invite them.
 # ============================================================
-log "Step 3: Creating Team Room..."
-MANAGER_MATRIX_ID="@manager:${MATRIX_DOMAIN}"
-ADMIN_MATRIX_ID="@${ADMIN_USER}:${MATRIX_DOMAIN}"
-LEADER_MATRIX_ID="@${LEADER_NAME}:${MATRIX_DOMAIN}"
+log "Step 4: Inviting members into Team Room and Leader DM..."
 
-# Build invite list: Leader + Team Admin (if set) + all workers
-INVITE_LIST="\"${LEADER_MATRIX_ID}\""
+# Set power levels for Team Room: Leader=100, Team Admin=100, Workers=0
+POWER_USERS_JSON=$(jq -n --arg leader "${LEADER_MATRIX_ID}" '{($leader): 100}')
 if [ -n "${TEAM_ADMIN_MID}" ]; then
-    INVITE_LIST="${INVITE_LIST},\"${TEAM_ADMIN_MID}\""
+    POWER_USERS_JSON=$(echo "${POWER_USERS_JSON}" | jq --arg a "${TEAM_ADMIN_MID}" '. + {($a): 100}')
 fi
 for w_name in "${WORKER_NAMES[@]}"; do
     w_name=$(echo "${w_name}" | tr -d ' ')
     [ -z "${w_name}" ] && continue
-    INVITE_LIST="${INVITE_LIST},\"@${w_name}:${MATRIX_DOMAIN}\""
+    POWER_USERS_JSON=$(echo "${POWER_USERS_JSON}" | jq --arg w "@${w_name}:${MATRIX_DOMAIN}" '. + {($w): 0}')
 done
+# Keep Manager at 100 (creator) — will leave after invites
+POWER_USERS_JSON=$(echo "${POWER_USERS_JSON}" | jq --arg m "${MANAGER_MATRIX_ID}" '. + {($m): 100}')
 
-# Build power levels: Manager=100 (creator, will leave after), Leader=100, Team Admin=100 (if set), Workers=0
-POWER_USERS="\"${MANAGER_MATRIX_ID}\": 100, \"${LEADER_MATRIX_ID}\": 100"
-if [ -n "${TEAM_ADMIN_MID}" ]; then
-    POWER_USERS="${POWER_USERS}, \"${TEAM_ADMIN_MID}\": 100"
-fi
-for w_name in "${WORKER_NAMES[@]}"; do
-    w_name=$(echo "${w_name}" | tr -d ' ')
-    [ -z "${w_name}" ] && continue
-    POWER_USERS="${POWER_USERS}, \"@${w_name}:${MATRIX_DOMAIN}\": 0"
-done
-
-# E2EE
-ROOM_E2EE_INITIAL_STATE=""
-if [ "${HICLAW_MATRIX_E2EE:-0}" = "1" ] || [ "${HICLAW_MATRIX_E2EE:-}" = "true" ]; then
-    ROOM_E2EE_INITIAL_STATE=',"initial_state":[{"type":"m.room.encryption","state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}]'
-fi
-
-TEAM_ROOM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
+# Update Team Room power levels
+TEAM_ROOM_ENC=$(echo "${TEAM_ROOM_ID}" | sed 's/!/%21/g')
+curl -sf -X PUT "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_ENC}/state/m.room.power_levels/" \
     -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
     -H 'Content-Type: application/json' \
-    -d '{
-        "name": "Team: '"${TEAM_NAME}"'",
-        "topic": "Team room for '"${TEAM_NAME}"' — Leader + Workers coordination",
-        "invite": ['"${INVITE_LIST}"'],
-        "preset": "trusted_private_chat",
-        "power_level_content_override": {
-            "users": {'"${POWER_USERS}"'}
-        }'"${ROOM_E2EE_INITIAL_STATE}"'
-    }' 2>/dev/null) || _fail "Failed to create Team Room"
+    -d '{"users": '"${POWER_USERS_JSON}"'}' > /dev/null 2>&1 \
+    || log "  WARNING: Failed to update Team Room power levels"
 
-TEAM_ROOM_ID=$(echo "${TEAM_ROOM_RESP}" | jq -r '.room_id // empty')
-if [ -z "${TEAM_ROOM_ID}" ]; then
-    _fail "Failed to create Team Room: ${TEAM_ROOM_RESP}"
-fi
-log "  Team Room created: ${TEAM_ROOM_ID}"
+# Invite Leader + Team Admin + Workers into Team Room
+for _invite_id in "${LEADER_MATRIX_ID}" ${TEAM_ADMIN_MID:+"${TEAM_ADMIN_MID}"}; do
+    curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_ENC}/invite" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{"user_id": "'"${_invite_id}"'"}' > /dev/null 2>&1 || true
+done
+for w_name in "${WORKER_NAMES[@]}"; do
+    w_name=$(echo "${w_name}" | tr -d ' ')
+    [ -z "${w_name}" ] && continue
+    curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_ENC}/invite" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{"user_id": "@'"${w_name}"':'"${MATRIX_DOMAIN}"'"}' > /dev/null 2>&1 || true
+done
+log "  Members invited to Team Room"
 
-# Manager leaves Team Room (delegation boundary — Manager only communicates via Leader Room)
-TEAM_ROOM_ENC=$(echo "${TEAM_ROOM_ID}" | sed 's/!/%21/g')
+# Manager leaves Team Room (delegation boundary)
 curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_ENC}/leave" \
     -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
     -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
@@ -318,10 +376,37 @@ curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_EN
 # Auto-join Team Admin into Team Room
 _admin_auto_join "${TEAM_ROOM_ID}"
 
+# Invite Leader + Team Admin into Leader DM, then Manager leaves
+if [ -n "${LEADER_DM_ROOM_ID}" ]; then
+    LEADER_DM_ENC=$(echo "${LEADER_DM_ROOM_ID}" | sed 's/!/%21/g')
+    # Update power levels
+    curl -sf -X PUT "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/state/m.room.power_levels/" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{"users": {"'"${MANAGER_MATRIX_ID}"'": 100, "'"${TEAM_ADMIN_MID}"'": 100, "'"${LEADER_MATRIX_ID}"'": 0}}' > /dev/null 2>&1 || true
+    # Invite
+    curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/invite" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{"user_id": "'"${TEAM_ADMIN_MID}"'"}' > /dev/null 2>&1 || true
+    curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/invite" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' \
+        -d '{"user_id": "'"${LEADER_MATRIX_ID}"'"}' > /dev/null 2>&1 || true
+    log "  Members invited to Leader DM"
+    # Manager leaves
+    curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/leave" \
+        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+        -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
+        && log "  Manager left Leader DM" \
+        || log "  WARNING: Manager failed to leave Leader DM"
+    _admin_auto_join "${LEADER_DM_ROOM_ID}"
+fi
+
 # ============================================================
-# Step 4: Update Leader's groupAllowFrom to include team workers + Team Admin
+# Step 5: Update Leader's groupAllowFrom to include team workers + Team Admin
 # ============================================================
-log "Step 4: Updating Leader's groupAllowFrom..."
+log "Step 5: Updating Leader's groupAllowFrom..."
 LEADER_CONFIG="/root/hiclaw-fs/agents/${LEADER_NAME}/openclaw.json"
 if [ -f "${LEADER_CONFIG}" ]; then
     for w_name in "${WORKER_NAMES[@]}"; do
@@ -380,12 +465,12 @@ if [ -n "${TEAM_ADMIN_MID}" ]; then
 fi
 
 # ============================================================
-# Step 4a: Enable peer mentions for team workers (default: true)
+# Step 5a: Enable peer mentions for team workers (default: true)
 # Each worker gets all other team workers added to groupAllowFrom.
 # After adding peers, re-apply groupDenyExtra to honor deny overrides.
 # ============================================================
 if [ "${PEER_MENTIONS}" = "true" ]; then
-    log "Step 4a: Enabling peer mentions for team workers..."
+    log "Step 5a: Enabling peer mentions for team workers..."
     ensure_mc_credentials 2>/dev/null || true
     for i in "${!WORKER_NAMES[@]}"; do
         target=$(echo "${WORKER_NAMES[$i]}" | tr -d ' ')
@@ -429,56 +514,14 @@ if [ "${PEER_MENTIONS}" = "true" ]; then
     done
     log "  Peer mentions enabled for all team workers"
 else
-    log "Step 4a: Peer mentions disabled (peerMentions=false)"
+    log "Step 5a: Peer mentions disabled (peerMentions=false)"
 fi
 
 # ============================================================
-# Step 4b: Create Leader DM room (Team Admin ↔ Leader)
-# ============================================================
-LEADER_DM_ROOM_ID=""
-if [ -n "${TEAM_ADMIN_MID}" ]; then
-    log "Step 4b: Creating Leader DM room (Team Admin ↔ Leader)..."
-    LEADER_DM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
-        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
-        -H 'Content-Type: application/json' \
-        -d '{
-            "name": "Team Admin DM: '"${TEAM_NAME}"'",
-            "topic": "Direct channel between Team Admin and Leader of '"${TEAM_NAME}"'",
-            "invite": ["'"${TEAM_ADMIN_MID}"'", "'"${LEADER_MATRIX_ID}"'"],
-            "preset": "trusted_private_chat",
-            "power_level_content_override": {
-                "users": {
-                    "'"${MANAGER_MATRIX_ID}"'": 100,
-                    "'"${TEAM_ADMIN_MID}"'": 100,
-                    "'"${LEADER_MATRIX_ID}"'": 0
-                }
-            }'"${ROOM_E2EE_INITIAL_STATE}"'
-        }' 2>/dev/null) || log "  WARNING: Failed to create Leader DM room"
-
-    LEADER_DM_ROOM_ID=$(echo "${LEADER_DM_RESP}" | jq -r '.room_id // empty')
-    if [ -n "${LEADER_DM_ROOM_ID}" ]; then
-        log "  Leader DM room created: ${LEADER_DM_ROOM_ID}"
-        # Manager leaves Leader DM (this is a Team Admin ↔ Leader channel)
-        LEADER_DM_ENC=$(echo "${LEADER_DM_ROOM_ID}" | sed 's/!/%21/g')
-        curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/leave" \
-            -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
-            -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
-            && log "  Manager left Leader DM" \
-            || log "  WARNING: Manager failed to leave Leader DM"
-        # Auto-join Team Admin into Leader DM room
-        _admin_auto_join "${LEADER_DM_ROOM_ID}"
-    else
-        log "  WARNING: Could not extract Leader DM room_id"
-    fi
-else
-    log "Step 4b: No Team Admin specified, skipping Leader DM room"
-fi
-
-# ============================================================
-# Step 4c: Initialize team storage space in MinIO
+# Step 6: Initialize team storage space in MinIO
 # Each team gets an isolated storage prefix: teams/{team-name}/
 # ============================================================
-log "Step 4c: Initializing team storage space..."
+log "Step 6: Initializing team storage space..."
 TEAM_STORAGE_DIR="/root/hiclaw-fs/teams/${TEAM_NAME}"
 mkdir -p "${TEAM_STORAGE_DIR}/projects"
 mkdir -p "${TEAM_STORAGE_DIR}/tasks"
@@ -491,9 +534,9 @@ mc mirror "${TEAM_STORAGE_DIR}/" "${HICLAW_STORAGE_PREFIX}/teams/${TEAM_NAME}/" 
 log "  Team storage initialized at ${HICLAW_STORAGE_PREFIX}/teams/${TEAM_NAME}/"
 
 # ============================================================
-# Step 5: Update teams-registry.json
+# Step 7: Update teams-registry.json
 # ============================================================
-log "Step 5: Updating teams-registry.json..."
+log "Step 7: Updating teams-registry.json..."
 REGISTRY_ARGS=(
     --action add
     --team-name "${TEAM_NAME}"
@@ -513,12 +556,12 @@ fi
 bash /opt/hiclaw/agent/skills/team-management/scripts/manage-teams-registry.sh "${REGISTRY_ARGS[@]}"
 
 # ============================================================
-# Step 5b: Re-inject Leader's team-context with room IDs
-# Leader was created before team rooms existed, so its AGENTS.md
-# team-context is missing Team Room, Leader DM, and worker details.
-# Now that everything is registered, re-inject the full context.
+# Step 7b: Re-inject Leader's team-context with worker room IDs
+# Leader was created before workers, so its AGENTS.md team-context
+# is missing worker room IDs. Now that all workers are registered,
+# re-inject the full context.
 # ============================================================
-log "Step 5b: Re-injecting Leader team-context with room IDs..."
+log "Step 7b: Re-injecting Leader team-context with worker room IDs..."
 _leader_agents_minio="${HICLAW_STORAGE_PREFIX}/agents/${LEADER_NAME}/AGENTS.md"
 _leader_agents_tmp=$(mktemp /tmp/leader-agents-XXXXXX.md)
 _leader_ctx_tmp=$(mktemp /tmp/leader-ctx-XXXXXX.md)
@@ -577,7 +620,7 @@ fi
 rm -f "${_leader_agents_tmp}" "${_leader_ctx_tmp}"
 
 # ============================================================
-# Step 6: Backfill permissions for humans that reference this team
+# Step 8: Backfill permissions for humans that reference this team
 # If a Human was created before this team, their permissions were
 # skipped. Now that the team exists, configure them.
 # ============================================================
@@ -588,7 +631,7 @@ if [ -f "${HUMANS_REGISTRY}" ]; then
         "${HUMANS_REGISTRY}" 2>/dev/null)
 
     if [ -n "${PENDING_HUMANS}" ]; then
-        log "Step 6: Backfilling permissions for humans referencing ${TEAM_NAME}..."
+        log "Step 8: Backfilling permissions for humans referencing ${TEAM_NAME}..."
         ensure_mc_credentials 2>/dev/null || true
 
         for _human_name in ${PENDING_HUMANS}; do
@@ -635,10 +678,10 @@ if [ -f "${HUMANS_REGISTRY}" ]; then
             log "    Permissions configured for ${_human_name}"
         done
     else
-        log "Step 6: No pending humans for ${TEAM_NAME} (skipped)"
+        log "Step 8: No pending humans for ${TEAM_NAME} (skipped)"
     fi
 else
-    log "Step 6: No humans-registry.json found (skipped)"
+    log "Step 8: No humans-registry.json found (skipped)"
 fi
 
 # ============================================================

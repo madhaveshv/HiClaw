@@ -47,6 +47,8 @@ WORKER_ROLE="worker"        # worker | team_leader
 TEAM_NAME=""                # optional: team this worker belongs to
 TEAM_LEADER_NAME=""         # optional: for team workers, who their leader is
 TEAM_ADMIN_MATRIX_ID=""     # optional: team admin Matrix ID for team-context injection
+TEAM_ROOM_ID=""             # optional: pre-created Team Room ID (for team-context injection)
+LEADER_DM_ROOM_ID=""        # optional: pre-created Leader DM Room ID (for team-context injection)
 CHANNEL_POLICY_JSON=""         # optional: JSON string of ChannelPolicySpec overrides
 
 while [ $# -gt 0 ]; do
@@ -64,6 +66,8 @@ while [ $# -gt 0 ]; do
         --team)       TEAM_NAME="$2"; shift 2 ;;
         --team-leader) TEAM_LEADER_NAME="$2"; shift 2 ;;
         --team-admin-matrix-id) TEAM_ADMIN_MATRIX_ID="$2"; shift 2 ;;
+        --team-room-id) TEAM_ROOM_ID="$2"; shift 2 ;;
+        --leader-dm-room-id) LEADER_DM_ROOM_ID="$2"; shift 2 ;;
         --channel-policy) CHANNEL_POLICY_JSON="$2"; shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
@@ -620,16 +624,19 @@ if [ -d "${WORKER_AGENT_SRC}" ]; then
         } > "${_ctx_tmp}"
     elif [ "${WORKER_ROLE}" = "team_leader" ]; then
         # Team Leader: upstream is Manager, downstream is team workers
-        # Look up Team Room ID and worker room IDs from registries
-        _team_room_id=""
-        _leader_dm_room_id=""
+        # Use pre-created room IDs passed via --team-room-id / --leader-dm-room-id
+        # or fall back to registry lookup
+        _team_room_id="${TEAM_ROOM_ID:-}"
+        _leader_dm_room_id="${LEADER_DM_ROOM_ID:-}"
         _worker_rooms=""
-        _teams_reg="${HOME}/teams-registry.json"
-        _workers_reg="${HOME}/workers-registry.json"
-        if [ -f "${_teams_reg}" ]; then
-            _team_room_id=$(jq -r --arg t "${TEAM_NAME}" '.teams[$t].team_room_id // empty' "${_teams_reg}" 2>/dev/null)
-            _leader_dm_room_id=$(jq -r --arg t "${TEAM_NAME}" '.teams[$t].leader_dm_room_id // empty' "${_teams_reg}" 2>/dev/null)
+        if [ -z "${_team_room_id}" ]; then
+            _teams_reg="${HOME}/teams-registry.json"
+            if [ -f "${_teams_reg}" ]; then
+                _team_room_id=$(jq -r --arg t "${TEAM_NAME}" '.teams[$t].team_room_id // empty' "${_teams_reg}" 2>/dev/null)
+                _leader_dm_room_id=$(jq -r --arg t "${TEAM_NAME}" '.teams[$t].leader_dm_room_id // empty' "${_teams_reg}" 2>/dev/null)
+            fi
         fi
+        _workers_reg="${HOME}/workers-registry.json"
         if [ -f "${_workers_reg}" ]; then
             _worker_rooms=$(jq -r --arg t "${TEAM_NAME}" '
                 [.workers | to_entries[] | select(.value.team_id == $t and .value.role == "worker") |
