@@ -338,33 +338,69 @@ if [ -n "${WORKER_ROOM_ID:-}" ]; then
     ROOM_ID="${WORKER_ROOM_ID}"
     log "  Reusing existing room from persisted state: ${ROOM_ID}"
 else
-    ROOM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
-        -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
-        -H 'Content-Type: application/json' \
-        -d '{
-            "name": "'"${ROOM_NAME_PREFIX}: ${WORKER_NAME}"'",
-            "topic": "Communication channel for '"${WORKER_NAME}"'",
-            "invite": [
-                "'"${ADMIN_MATRIX_ID}"'",
-                "'"${ROOM_AUTHORITY_ID}"'",
-                "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'"
-            ],
-            "preset": "trusted_private_chat",
-            "power_level_content_override": {
-                "users": {
-                    "'"${MANAGER_MATRIX_ID}"'": 100,
-                    "'"${ADMIN_MATRIX_ID}"'": 100,
-                    "'"${ROOM_AUTHORITY_ID}"'": 100,
-                    "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'": 0
-                }
-            }'"${ROOM_E2EE_INITIAL_STATE}"'
-        }' 2>/dev/null) || _fail "Failed to create Matrix room"
+    if [ -n "${TEAM_LEADER_NAME}" ]; then
+        # Team worker: Manager creates room but will leave after creation
+        ROOM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
+            -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d '{
+                "name": "'"${ROOM_NAME_PREFIX}: ${WORKER_NAME}"'",
+                "topic": "Communication channel for '"${WORKER_NAME}"'",
+                "invite": [
+                    "'"${ADMIN_MATRIX_ID}"'",
+                    "'"${ROOM_AUTHORITY_ID}"'",
+                    "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'"
+                ],
+                "preset": "trusted_private_chat",
+                "power_level_content_override": {
+                    "users": {
+                        "'"${MANAGER_MATRIX_ID}"'": 100,
+                        "'"${ADMIN_MATRIX_ID}"'": 100,
+                        "'"${ROOM_AUTHORITY_ID}"'": 100,
+                        "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'": 0
+                    }
+                }'"${ROOM_E2EE_INITIAL_STATE}"'
+            }' 2>/dev/null) || _fail "Failed to create Matrix room"
+    else
+        # Standalone worker: Manager stays in room
+        ROOM_RESP=$(curl -sf -X POST ${HICLAW_MATRIX_SERVER}/_matrix/client/v3/createRoom \
+            -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            -d '{
+                "name": "'"${ROOM_NAME_PREFIX}: ${WORKER_NAME}"'",
+                "topic": "Communication channel for '"${WORKER_NAME}"'",
+                "invite": [
+                    "'"${ADMIN_MATRIX_ID}"'",
+                    "'"${ROOM_AUTHORITY_ID}"'",
+                    "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'"
+                ],
+                "preset": "trusted_private_chat",
+                "power_level_content_override": {
+                    "users": {
+                        "'"${MANAGER_MATRIX_ID}"'": 100,
+                        "'"${ADMIN_MATRIX_ID}"'": 100,
+                        "'"${ROOM_AUTHORITY_ID}"'": 100,
+                        "@'"${WORKER_NAME}"':'"${MATRIX_DOMAIN}"'": 0
+                    }
+                }'"${ROOM_E2EE_INITIAL_STATE}"'
+            }' 2>/dev/null) || _fail "Failed to create Matrix room"
+    fi
 
     ROOM_ID=$(echo "${ROOM_RESP}" | jq -r '.room_id // empty')
     if [ -z "${ROOM_ID}" ]; then
         _fail "Failed to create Matrix room: ${ROOM_RESP}"
     fi
     log "  Room created with all members (Human + Manager + Worker): ${ROOM_ID} — no manual room creation needed"
+
+    # Manager leaves team worker rooms (delegation boundary)
+    if [ -n "${TEAM_LEADER_NAME}" ]; then
+        ROOM_ID_ENC=$(echo "${ROOM_ID}" | sed 's/!/%21/g')
+        curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${ROOM_ID_ENC}/leave" \
+            -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+            -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
+            && log "  Manager left team worker room (delegation boundary)" \
+            || log "  WARNING: Manager failed to leave team worker room"
+    fi
 
     # Persist room_id early so retries can reuse it (registry update is at Step 8.5)
     WORKER_ROOM_ID="${ROOM_ID}"

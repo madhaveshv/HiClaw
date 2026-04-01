@@ -271,7 +271,7 @@ for w_name in "${WORKER_NAMES[@]}"; do
     INVITE_LIST="${INVITE_LIST},\"@${w_name}:${MATRIX_DOMAIN}\""
 done
 
-# Build power levels: Leader=100, Team Admin=100 (if set), Workers=0
+# Build power levels: Manager=100 (creator, will leave after), Leader=100, Team Admin=100 (if set), Workers=0
 POWER_USERS="\"${MANAGER_MATRIX_ID}\": 100, \"${LEADER_MATRIX_ID}\": 100"
 if [ -n "${TEAM_ADMIN_MID}" ]; then
     POWER_USERS="${POWER_USERS}, \"${TEAM_ADMIN_MID}\": 100"
@@ -306,6 +306,14 @@ if [ -z "${TEAM_ROOM_ID}" ]; then
     _fail "Failed to create Team Room: ${TEAM_ROOM_RESP}"
 fi
 log "  Team Room created: ${TEAM_ROOM_ID}"
+
+# Manager leaves Team Room (delegation boundary — Manager only communicates via Leader Room)
+TEAM_ROOM_ENC=$(echo "${TEAM_ROOM_ID}" | sed 's/!/%21/g')
+curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${TEAM_ROOM_ENC}/leave" \
+    -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+    -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
+    && log "  Manager left Team Room (delegation boundary)" \
+    || log "  WARNING: Manager failed to leave Team Room"
 
 # Auto-join Team Admin into Team Room
 _admin_auto_join "${TEAM_ROOM_ID}"
@@ -450,6 +458,13 @@ if [ -n "${TEAM_ADMIN_MID}" ]; then
     LEADER_DM_ROOM_ID=$(echo "${LEADER_DM_RESP}" | jq -r '.room_id // empty')
     if [ -n "${LEADER_DM_ROOM_ID}" ]; then
         log "  Leader DM room created: ${LEADER_DM_ROOM_ID}"
+        # Manager leaves Leader DM (this is a Team Admin ↔ Leader channel)
+        LEADER_DM_ENC=$(echo "${LEADER_DM_ROOM_ID}" | sed 's/!/%21/g')
+        curl -sf -X POST "${HICLAW_MATRIX_SERVER}/_matrix/client/v3/rooms/${LEADER_DM_ENC}/leave" \
+            -H "Authorization: Bearer ${MANAGER_MATRIX_TOKEN}" \
+            -H 'Content-Type: application/json' -d '{}' > /dev/null 2>&1 \
+            && log "  Manager left Leader DM" \
+            || log "  WARNING: Manager failed to leave Leader DM"
         # Auto-join Team Admin into Leader DM room
         _admin_auto_join "${LEADER_DM_ROOM_ID}"
     else
