@@ -11,7 +11,7 @@ Manage individual tasks within your team. For complex multi-worker tasks with de
 
 **NEVER write code, design APIs, create deliverables, or do any domain work yourself.**
 Your ONLY job is to:
-1. Read your latest team-context: `cat ~/AGENTS.md` (get Team Room ID, worker list)
+1. Read your latest team-context: `cat ./AGENTS.md` (get Team Room ID, worker list)
 2. Decompose tasks into sub-tasks
 3. Assign sub-tasks to workers via `send-team-message.sh`
 4. Monitor progress and aggregate results
@@ -22,7 +22,7 @@ If you catch yourself doing a worker's job — STOP and delegate instead.
 
 Before doing ANYTHING, run:
 ```bash
-cat ~/AGENTS.md
+cat ./AGENTS.md
 ```
 This gives you the **Team Room ID**, **Leader DM**, and **worker list with room IDs** you need for delegation. These may not be in your initial context — always read the file.
 
@@ -35,7 +35,7 @@ Look up the **Team Room** and **worker Matrix IDs** from your AGENTS.md `## Coor
 ```bash
 # Step 1: Create task spec files and push to MinIO
 # Step 2: Send @mention to worker in Team Room
-bash ~/skills/team-task-management/scripts/send-team-message.sh \
+bash ./skills/team-task-management/scripts/send-team-message.sh \
   --room-id '<TEAM_ROOM_ID from your Coordination section>' \
   --to '@worker-name:domain' \
   --message '@worker-name:domain New task [st-01]: Design API endpoints. Please file-sync and read teams/{team}/tasks/st-01/spec.md. @mention me when complete.'
@@ -52,25 +52,25 @@ bash ~/skills/team-task-management/scripts/send-team-message.sh \
 
 ```bash
 # Find available team workers
-bash ~/skills/team-task-management/scripts/find-team-worker.sh
+bash ./skills/team-task-management/scripts/find-team-worker.sh
 
 # Send @mention to a worker in a room (REQUIRED for task assignment)
-bash ~/skills/team-task-management/scripts/send-team-message.sh \
+bash ./skills/team-task-management/scripts/send-team-message.sh \
   --room-id '!teamroom:domain' --to '@worker:domain' \
   --message '@worker:domain Your task message here'
 
 # Track task state
-bash ~/skills/team-task-management/scripts/manage-team-state.sh \
+bash ./skills/team-task-management/scripts/manage-team-state.sh \
   --action add-finite --task-id st-01 --title "Task title" \
   --assigned-to worker-name --room-id '!room:domain' \
   --source team-admin --requester '@admin:domain'
 
 # Mark task complete
-bash ~/skills/team-task-management/scripts/manage-team-state.sh \
+bash ./skills/team-task-management/scripts/manage-team-state.sh \
   --action complete --task-id st-01
 
 # List all active team tasks and projects
-bash ~/skills/team-task-management/scripts/manage-team-state.sh --action list
+bash ./skills/team-task-management/scripts/manage-team-state.sh --action list
 ```
 
 ## Gotchas

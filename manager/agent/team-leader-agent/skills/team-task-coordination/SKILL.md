@@ -36,11 +36,11 @@ Auto-expires after 15 minutes (default).
 
 ```bash
 # Check if safe to modify
-bash ~/skills/team-task-coordination/scripts/check-processing-marker.sh <task-id>
+bash ./skills/team-task-coordination/scripts/check-processing-marker.sh <task-id>
 
 # Create marker before modifying
-bash ~/skills/team-task-coordination/scripts/create-processing-marker.sh <task-id> <processor-name> [timeout-mins]
+bash ./skills/team-task-coordination/scripts/create-processing-marker.sh <task-id> <processor-name> [timeout-mins]
 
 # Remove marker after done
-bash ~/skills/team-task-coordination/scripts/remove-processing-marker.sh <task-id>
+bash ./skills/team-task-coordination/scripts/remove-processing-marker.sh <task-id>
 ```

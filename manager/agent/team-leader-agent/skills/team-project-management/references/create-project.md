@@ -25,13 +25,13 @@ PROJECT_ID="tp-$(date +%Y%m%d-%H%M%S)"
 
 ```bash
 # Manager source
-bash ~/skills/team-project-management/scripts/create-team-project.sh \
+bash ./skills/team-project-management/scripts/create-team-project.sh \
   --id "${PROJECT_ID}" --title "Project Title" \
   --workers alice,bob,charlie \
   --source manager --parent-task-id task-xxx
 
 # Team Admin source
-bash ~/skills/team-project-management/scripts/create-team-project.sh \
+bash ./skills/team-project-management/scripts/create-team-project.sh \
   --id "${PROJECT_ID}" --title "Project Title" \
   --workers alice,bob \
   --source team-admin --requester "@admin:domain"
@@ -49,7 +49,7 @@ Edit the generated `plan.md` to add the DAG task plan. See `references/plan-form
 ### 5. Validate DAG
 
 ```bash
-bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /root/hiclaw-fs/teams/{team}/projects/{project-id}/plan.md \
   --action validate
 ```

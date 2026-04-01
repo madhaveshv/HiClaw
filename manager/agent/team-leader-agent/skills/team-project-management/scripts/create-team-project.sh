@@ -135,7 +135,7 @@ STATE_ARGS=(--action add-project --project-id "${PROJECT_ID}" --title "${PROJECT
 [ -n "${PARENT_TASK_ID}" ] && STATE_ARGS+=(--parent-task-id "${PARENT_TASK_ID}")
 [ -n "${REQUESTER}" ] && STATE_ARGS+=(--requester "${REQUESTER}")
 
-bash ~/skills/team-task-management/scripts/manage-team-state.sh "${STATE_ARGS[@]}"
+bash ./skills/team-task-management/scripts/manage-team-state.sh "${STATE_ARGS[@]}"
 
 # ============================================================
 # Output JSON result

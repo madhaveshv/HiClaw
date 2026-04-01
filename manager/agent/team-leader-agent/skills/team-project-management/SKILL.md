@@ -11,20 +11,20 @@ Manage multi-worker collaborative projects with DAG-based task orchestration.
 
 ```bash
 # Create a new team project (use --source, --parent-task-id, --requester as needed)
-bash ~/skills/team-project-management/scripts/create-team-project.sh \
+bash ./skills/team-project-management/scripts/create-team-project.sh \
   --id tp-YYYYMMDD-HHMMSS --title "Title" --workers alice,bob \
   --source manager --parent-task-id task-xxx
 
 # Validate DAG (check for cycles)
-bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /path/to/plan.md --action validate
 
 # Get ready-to-assign tasks (all dependencies satisfied)
-bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /path/to/plan.md --action ready
 
 # Get full DAG status
-bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /path/to/plan.md --action status
 ```
 

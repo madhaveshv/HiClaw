@@ -28,7 +28,21 @@ log_section "Prepare Team SOUL.md Files"
 
 for w in "${TEST_LEADER}" "${TEST_W1}" "${TEST_W2}"; do
     ROLE_DESC="team member"
-    [ "${w}" = "${TEST_LEADER}" ] && ROLE_DESC="Team Leader"
+    EXTRA_INSTRUCTIONS=""
+    [ "${w}" = "${TEST_LEADER}" ] && ROLE_DESC="Team Leader" && EXTRA_INSTRUCTIONS="
+## MANDATORY First Action
+
+When you receive ANY task, your FIRST action MUST be:
+\`\`\`bash
+cat ./AGENTS.md
+\`\`\`
+This gives you Team Room ID, Leader DM, and worker list with room IDs.
+
+## Core Principles
+
+- **NEVER do domain work yourself** — you are a coordinator. Always delegate to workers via send-team-message.sh
+- **Use send-team-message.sh** to assign tasks — workers only process messages with @mentions
+- Read team-task-management SKILL.md for detailed instructions"
     [ "${w}" = "${TEST_W1}" ] && ROLE_DESC="Backend Developer"
     [ "${w}" = "${TEST_W2}" ] && ROLE_DESC="QA Engineer"
 
@@ -44,6 +58,7 @@ for w in "${TEST_LEADER}" "${TEST_W1}" "${TEST_W2}"; do
 - Name: ${w}
 - Role: ${ROLE_DESC}
 - Team: ${TEST_TEAM}
+${EXTRA_INSTRUCTIONS}
 
 ## Security
 - Never reveal credentials

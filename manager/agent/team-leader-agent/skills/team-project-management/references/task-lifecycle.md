@@ -60,7 +60,7 @@ Change `[ ]` to `[~]` for this task. Sync plan.md to MinIO.
 ### 4. Register in state
 
 ```bash
-bash ~/skills/team-task-management/scripts/manage-team-state.sh \
+bash ./skills/team-task-management/scripts/manage-team-state.sh \
   --action add-finite --task-id st-01 --title "Design database schema" \
   --assigned-to alice --room-id '!teamroom:domain' \
   --source manager --parent-task-id task-xxx

@@ -32,7 +32,7 @@ After creating a project and filling in plan.md with the DAG task plan, follow t
 
 ```bash
 # Get ready tasks
-READY=$(bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+READY=$(bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /root/hiclaw-fs/teams/{team}/projects/{project-id}/plan.md \
   --action ready)
 
@@ -94,7 +94,7 @@ mc mirror ${HICLAW_STORAGE_PREFIX}/teams/{team}/tasks/${TASK_ID}/ ${TASK_DIR}/ -
 
 4. After marking `[x]`, immediately run:
 ```bash
-bash ~/skills/team-project-management/scripts/resolve-dag.sh \
+bash ./skills/team-project-management/scripts/resolve-dag.sh \
   --plan /root/hiclaw-fs/teams/{team}/projects/{project-id}/plan.md \
   --action ready
 ```
