@@ -71,6 +71,10 @@ bash /opt/hiclaw/agent/skills/worker-management/scripts/create-worker.sh \
   [--remote] [--runtime openclaw|copaw] [--console-port <PORT>]
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--model` | Model ID. If not specified, uses the default from `HICLAW_DEFAULT_MODEL` environment variable. |
+
 The script handles everything: Matrix registration, room creation, Higress consumer, AI/MCP authorization, config generation, MinIO sync, skills push, and container startup.
 
 ### MCP server short-circuit
@@ -98,16 +102,16 @@ Only use `--remote` when admin **explicitly** requests deploying on a separate m
    bash -c 'source /opt/hiclaw/scripts/lib/container-api.sh && worker_backend_status "<NAME>"'
    ```
 
-2. Send greeting in Worker's Room:
+2. Immediately reply to admin in the DM (do NOT wait for Worker to greet first):
    ```
-   @<NAME>:${HICLAW_MATRIX_DOMAIN} You're all set! Please introduce yourself to everyone in this room.
-   ```
-
-3. After Worker greets, notify admin:
-   ```
-   @${HICLAW_ADMIN_USER}:${HICLAW_MATRIX_DOMAIN} <NAME> is ready. Remember to @mention them when giving tasks.
+   <NAME> is ready. Remember to @mention them when giving tasks.
 
    Note: By default, Workers only accept @mentions from Manager and admin — not from each other. Peer mentions can be enabled explicitly per-project.
+   ```
+
+3. Send greeting in Worker's Room:
+   ```
+   @<NAME>:${HICLAW_MATRIX_DOMAIN} You're all set! Please introduce yourself to everyone in this room.
    ```
 
 ## Imported Worker Pull-Up

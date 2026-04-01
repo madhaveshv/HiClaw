@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -172,6 +173,11 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 	if len(w.Spec.McpServers) > 0 {
 		args = append(args, "--mcp-servers", joinStrings(w.Spec.McpServers))
 	}
+	if w.Spec.ChannelPolicy != nil {
+		if policyJSON, err := json.Marshal(w.Spec.ChannelPolicy); err == nil {
+			args = append(args, "--channel-policy", string(policyJSON))
+		}
+	}
 
 	// Check for team annotations (set by TeamReconciler)
 	if role := w.Annotations["hiclaw.io/role"]; role != "" {
@@ -242,8 +248,13 @@ func (r *WorkerReconciler) handleUpdate(ctx context.Context, w *v1beta1.Worker) 
 	if w.Spec.Package != "" {
 		extractedDir, err := r.Packages.ResolveAndExtract(ctx, w.Spec.Package, w.Name)
 		if err != nil {
-			logger.Error(err, "package resolve/extract failed during update", "name", w.Name)
-		} else if extractedDir != "" {
+			_ = r.Get(ctx, client.ObjectKeyFromObject(w), w)
+			w.Status.Phase = "Failed"
+			w.Status.Message = fmt.Sprintf("package resolve/extract failed: %v", err)
+			r.Status().Update(ctx, w)
+			return reconcile.Result{RequeueAfter: time.Minute}, err
+		}
+		if extractedDir != "" {
 			packageDir = extractedDir
 			logger.Info("package resolved for update", "name", w.Name, "dir", extractedDir)
 		}
@@ -253,10 +264,13 @@ func (r *WorkerReconciler) handleUpdate(ctx context.Context, w *v1beta1.Worker) 
 	if w.Spec.Identity != "" || w.Spec.Soul != "" || w.Spec.Agents != "" {
 		agentDir := fmt.Sprintf("/root/hiclaw-fs/agents/%s", w.Name)
 		if err := executor.WriteInlineConfigs(agentDir, w.Spec.Runtime, w.Spec.Identity, w.Spec.Soul, w.Spec.Agents); err != nil {
-			logger.Error(err, "write inline configs failed during update", "name", w.Name)
-		} else {
-			logger.Info("inline configs written for update", "name", w.Name)
+			_ = r.Get(ctx, client.ObjectKeyFromObject(w), w)
+			w.Status.Phase = "Failed"
+			w.Status.Message = fmt.Sprintf("write inline configs failed: %v", err)
+			r.Status().Update(ctx, w)
+			return reconcile.Result{RequeueAfter: time.Minute}, err
 		}
+		logger.Info("inline configs written for update", "name", w.Name)
 	}
 
 	// 2. Call update-worker-config.sh (handles credentials, openclaw.json, skills, MinIO sync)
@@ -272,6 +286,11 @@ func (r *WorkerReconciler) handleUpdate(ctx context.Context, w *v1beta1.Worker) 
 	}
 	if packageDir != "" {
 		args = append(args, "--package-dir", packageDir)
+	}
+	if w.Spec.ChannelPolicy != nil {
+		if policyJSON, err := json.Marshal(w.Spec.ChannelPolicy); err == nil {
+			args = append(args, "--channel-policy", string(policyJSON))
+		}
 	}
 
 	_, err := r.Executor.Run(ctx,

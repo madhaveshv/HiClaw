@@ -39,6 +39,7 @@
 #   HICLAW_PORT_GATEWAY       Host port for Higress gateway (default: 18080)
 #   HICLAW_PORT_CONSOLE       Host port for Higress console (default: 18001)
 #   HICLAW_PORT_ELEMENT_WEB   Host port for Element Web direct access (default: 18088)
+#   HICLAW_PORT_MANAGER_CONSOLE  Host port for Manager console (default: 18888)
 #   HICLAW_WORKER_IDLE_TIMEOUT  Worker idle timeout in minutes (default: 720, i.e. 12 hours)
 
 set -e
@@ -437,8 +438,10 @@ msg() {
         "port.console_prompt.en") text="Host port for Higress console (8001 inside container)" ;;
         "port.element_prompt.zh") text="Element Web 直接访问主机端口（容器内 8088）" ;;
         "port.element_prompt.en") text="Host port for Element Web direct access (8088 inside container)" ;;
-        "port.openclaw_console_prompt.zh") text="OpenClaw 控制台主机端口（容器内 18888）" ;;
-        "port.openclaw_console_prompt.en") text="Host port for OpenClaw console (18888 inside container)" ;;
+        "port.manager_console_prompt.zh") text="Manager 控制台主机端口（容器内 18888）" ;;
+        "port.manager_console_prompt.en") text="Host port for Manager console (18888 inside container)" ;;
+        "port.copaw_app_prompt.zh") text="CoPaw App API 主机端口（容器内 18799）" ;;
+        "port.copaw_app_prompt.en") text="Host port for CoPaw App API (18799 inside container)" ;;
         # --- Local-only binding ---
         "port.local_only.title.zh") text="--- 网络访问模式 ---" ;;
         "port.local_only.title.en") text="--- Network Access Mode ---" ;;
@@ -471,8 +474,8 @@ msg() {
         "domain.gateway_prompt.en") text="AI Gateway Domain" ;;
         "domain.fs_prompt.zh") text="文件系统域名" ;;
         "domain.fs_prompt.en") text="File System Domain" ;;
-        "domain.console_prompt.zh") text="OpenClaw 控制台域名" ;;
-        "domain.console_prompt.en") text="OpenClaw Console Domain" ;;
+        "domain.console_prompt.zh") text="Manager 控制台域名" ;;
+        "domain.console_prompt.en") text="Manager Console Domain" ;;
         # --- GitHub Integration ---
         "github.title.zh") text="--- GitHub 集成（可选，按回车跳过）---" ;;
         "github.title.en") text="--- GitHub Integration (optional, press Enter to skip) ---" ;;
@@ -517,6 +520,18 @@ msg() {
         "worker_runtime.selected.en") text="Default Worker runtime: %s" ;;
         "worker_runtime.title_short.zh") text="默认 Worker 运行时" ;;
         "worker_runtime.title_short.en") text="Default Worker Runtime" ;;
+        "manager_runtime.title.zh") text="--- Manager 运行时 ---" ;;
+        "manager_runtime.title.en") text="--- Manager Runtime ---" ;;
+        "manager_runtime.openclaw.zh") text="OpenClaw（Node.js）" ;;
+        "manager_runtime.openclaw.en") text="OpenClaw (Node.js)" ;;
+        "manager_runtime.copaw.zh") text="CoPaw（Python，AgentScope 框架）" ;;
+        "manager_runtime.copaw.en") text="CoPaw (Python, AgentScope framework)" ;;
+        "manager_runtime.choice.zh") text="请选择 [1/2]" ;;
+        "manager_runtime.choice.en") text="Enter choice [1/2]" ;;
+        "manager_runtime.selected.zh") text="Manager 运行时: %s" ;;
+        "manager_runtime.selected.en") text="Manager runtime: %s" ;;
+        "manager_runtime.title_short.zh") text="Manager 运行时" ;;
+        "manager_runtime.title_short.en") text="Manager Runtime" ;;
         # --- Secrets and config ---
         "install.generating_secrets.zh") text="正在生成密钥..." ;;
         "install.generating_secrets.en") text="Generating secrets..." ;;
@@ -639,6 +654,30 @@ msg() {
         "llm.openai.test.no_curl.en") text="⚠️  curl not found, skipping API connectivity test" ;;
         "llm.openai.test.confirm.zh") text="是否仍要继续安装？[y/N/b] " ;;
         "llm.openai.test.confirm.en") text="Continue with installation anyway? [y/N/b] " ;;
+        "llm.embedding.title.zh") text="📦 记忆搜索配置" ;;
+        "llm.embedding.title.en") text="📦 Memory Search Configuration" ;;
+        "llm.embedding.hint.zh") text="  Embedding 模型可提升记忆搜索质量（语义匹配）。不启用也可正常使用记忆功能（关键词匹配）。" ;;
+        "llm.embedding.hint.en") text="  Embedding model improves memory search quality (semantic matching). Memory still works without it (keyword matching)." ;;
+        "llm.embedding.option.default.zh") text="  1) text-embedding-v4（推荐）" ;;
+        "llm.embedding.option.default.en") text="  1) text-embedding-v4 (Recommended)" ;;
+        "llm.embedding.option.custom.zh") text="  2) 自定义 Embedding 模型" ;;
+        "llm.embedding.option.custom.en") text="  2) Custom embedding model" ;;
+        "llm.embedding.option.disable.zh") text="  3) 不启用" ;;
+        "llm.embedding.option.disable.en") text="  3) Do not enable" ;;
+        "llm.embedding.select.zh") text="选择" ;;
+        "llm.embedding.select.en") text="Select" ;;
+        "llm.embedding.custom_prompt.zh") text="  Embedding 模型名称" ;;
+        "llm.embedding.custom_prompt.en") text="  Embedding model name" ;;
+        "llm.embedding.test.testing.zh") text="正在测试 Embedding API 联通性..." ;;
+        "llm.embedding.test.testing.en") text="Testing Embedding API connectivity..." ;;
+        "llm.embedding.test.ok.zh") text="✅ Embedding API 联通性测试通过" ;;
+        "llm.embedding.test.ok.en") text="✅ Embedding API connectivity test passed" ;;
+        "llm.embedding.test.fail.zh") text="⚠️  Embedding API 测试失败（HTTP %s）。响应: %s" ;;
+        "llm.embedding.test.fail.en") text="⚠️  Embedding API test failed (HTTP %s). Response: %s" ;;
+        "llm.embedding.auto_disabled.zh") text="⚠️  Embedding 已自动禁用，记忆搜索将使用关键词匹配。您可以稍后在 hiclaw-manager.env 中设置 HICLAW_EMBEDDING_MODEL 启用。" ;;
+        "llm.embedding.auto_disabled.en") text="⚠️  Embedding auto-disabled. Memory search will use keyword matching. You can enable it later in hiclaw-manager.env by setting HICLAW_EMBEDDING_MODEL." ;;
+        "llm.embedding.disabled.zh") text="ℹ️  Embedding 已禁用，记忆搜索将使用关键词匹配。" ;;
+        "llm.embedding.disabled.en") text="ℹ️  Embedding disabled. Memory search will use keyword matching." ;;
         "llm.openai.test.aborted.zh") text="安装已中止。" ;;
         "llm.openai.test.aborted.en") text="Installation aborted." ;;
         "nav.back_hint.zh") text="（输入 b 返回上一步）" ;;
@@ -721,10 +760,12 @@ msg() {
         "success.other_consoles.en") text="--- Other Consoles ---" ;;
         "success.higress_console.zh") text="  Higress 控制台: http://localhost:%s（用户名: %s / 密码: %s）" ;;
         "success.higress_console.en") text="  Higress Console: http://localhost:%s (Username: %s / Password: %s)" ;;
-        "success.openclaw_console.zh") text="  OpenClaw 控制台（本地）: http://localhost:%s（无需登录）" ;;
-        "success.openclaw_console.en") text="  OpenClaw Console (local): http://localhost:%s (no login required)" ;;
-        "success.openclaw_console_gateway.zh") text="  OpenClaw 控制台（网关）: http://console-local.hiclaw.io（用户名: %s / 密码: %s）" ;;
-        "success.openclaw_console_gateway.en") text="  OpenClaw Console (gateway): http://console-local.hiclaw.io (Username: %s / Password: %s)" ;;
+        "success.manager_console.zh") text="  Manager 控制台（本地）: http://localhost:%s（无需登录）" ;;
+        "success.manager_console.en") text="  Manager Console (local): http://localhost:%s (no login required)" ;;
+        "success.manager_console_gateway.zh") text="  Manager 控制台（网关）: http://console-local.hiclaw.io（用户名: %s / 密码: %s）" ;;
+        "success.manager_console_gateway.en") text="  Manager Console (gateway): http://console-local.hiclaw.io (Username: %s / Password: %s)" ;;
+        "success.copaw_console.zh") text="  CoPaw App API: http://localhost:%s（无需登录）" ;;
+        "success.copaw_console.en") text="  CoPaw App API: http://localhost:%s (no login required)" ;;
         "success.switch_llm.title.zh") text="--- 切换 LLM 提供商 ---" ;;
         "success.switch_llm.title.en") text="--- Switch LLM Providers ---" ;;
         "success.switch_llm.hint.zh") text="  您可以通过 Higress 控制台切换到其他 LLM 提供商（OpenAI、Anthropic 等）。" ;;
@@ -842,12 +883,14 @@ HICLAW_INSTALL_ORCHESTRATOR_IMAGE="${HICLAW_INSTALL_ORCHESTRATOR_IMAGE:-${HICLAW
 # Image variables are resolved after version selection in step_version().
 # These placeholders allow early code paths to reference them without errors.
 MANAGER_IMAGE="${HICLAW_INSTALL_MANAGER_IMAGE:-}"
+MANAGER_COPAW_IMAGE="${HICLAW_INSTALL_MANAGER_COPAW_IMAGE:-}"
 WORKER_IMAGE="${HICLAW_INSTALL_WORKER_IMAGE:-}"
 COPAW_WORKER_IMAGE="${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-}"
 ORCHESTRATOR_IMAGE="${HICLAW_INSTALL_ORCHESTRATOR_IMAGE:-}"
 
 resolve_image_tags() {
     MANAGER_IMAGE="${HICLAW_INSTALL_MANAGER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-manager:${HICLAW_VERSION}}"
+    MANAGER_COPAW_IMAGE="${HICLAW_INSTALL_MANAGER_COPAW_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-manager-copaw:${HICLAW_VERSION}}"
     WORKER_IMAGE="${HICLAW_INSTALL_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-worker:${HICLAW_VERSION}}"
     COPAW_WORKER_IMAGE="${HICLAW_INSTALL_COPAW_WORKER_IMAGE:-${HICLAW_REGISTRY}/higress/hiclaw-copaw-worker:${HICLAW_VERSION}}"
     # orchestrator: prefer versioned tag, fall back to :latest at pull time
@@ -941,12 +984,23 @@ wait_manager_ready() {
 
     log "$(msg install.wait_ready "${timeout}")"
 
-    # Wait for OpenClaw gateway to be healthy inside the container
+    # Wait for Manager agent to be healthy inside the container
+    local runtime="${HICLAW_MANAGER_RUNTIME:-openclaw}"
     while [ "${elapsed}" -lt "${timeout}" ]; do
-        if ${DOCKER_CMD} exec "${container}" openclaw gateway health --json 2>/dev/null | grep -q '"ok"' 2>/dev/null; then
-            log "$(msg install.wait_ready.ok)"
-            return 0
-        fi
+        case "${runtime}" in
+            copaw)
+                if ${DOCKER_CMD} exec "${container}" curl -sf http://127.0.0.1:18799/api/agents 2>/dev/null | grep -q '"agents"'; then
+                    log "$(msg install.wait_ready.ok)"
+                    return 0
+                fi
+                ;;
+            *)
+                if ${DOCKER_CMD} exec "${container}" openclaw gateway health --json 2>/dev/null | grep -q '"ok"' 2>/dev/null; then
+                    log "$(msg install.wait_ready.ok)"
+                    return 0
+                fi
+                ;;
+        esac
         sleep 5
         elapsed=$((elapsed + 5))
         printf "\r\033[36m[HiClaw]\033[0m $(msg install.wait_ready.waiting "${elapsed}" "${timeout}")"
@@ -1219,6 +1273,9 @@ should_skip_step() {
             [ "${HICLAW_NON_INTERACTIVE}" = "1" ] && return 0
             [ "${HICLAW_QUICKSTART}" = "1" ] && [ "${HICLAW_UPGRADE}" != "1" ] && return 0
             ;;
+        step_manager_runtime)
+            [ "${HICLAW_NON_INTERACTIVE}" = "1" ] && return 0
+            ;;
         step_hostshare)
             [ "${HICLAW_NON_INTERACTIVE}" = "1" ] && return 0
             [ "${HICLAW_QUICKSTART}" = "1" ] && return 0
@@ -1243,7 +1300,7 @@ clear_step_vars() {
         step_network) unset HICLAW_LOCAL_ONLY ;;
         step_ports)
             unset HICLAW_PORT_GATEWAY HICLAW_PORT_CONSOLE
-            unset HICLAW_PORT_ELEMENT_WEB HICLAW_PORT_OPENCLAW_CONSOLE
+            unset HICLAW_PORT_ELEMENT_WEB HICLAW_PORT_MANAGER_CONSOLE
             ;;
         step_domains)
             unset HICLAW_MATRIX_DOMAIN HICLAW_MATRIX_CLIENT_DOMAIN
@@ -1254,6 +1311,7 @@ clear_step_vars() {
         step_volume)    unset HICLAW_DATA_DIR ;;
         step_workspace) unset HICLAW_WORKSPACE_DIR ;;
         step_runtime)   unset HICLAW_DEFAULT_WORKER_RUNTIME ;;
+        step_manager_runtime) unset HICLAW_MANAGER_RUNTIME ;;
         step_e2ee)      unset HICLAW_MATRIX_E2EE ;;
         step_docker_proxy) unset HICLAW_DOCKER_PROXY; unset HICLAW_PROXY_ALLOWED_REGISTRIES ;;
         step_idle)      unset HICLAW_WORKER_IDLE_TIMEOUT ;;
@@ -1502,6 +1560,7 @@ step_llm() {
         log "$(msg llm.provider.qwen_default "${HICLAW_LLM_PROVIDER}")"
         log "$(msg llm.model.default "${HICLAW_DEFAULT_MODEL}")"
         prompt HICLAW_LLM_API_KEY "$(msg llm.apikey_prompt)" "" "true"
+        HICLAW_EMBEDDING_MODEL="${HICLAW_EMBEDDING_MODEL-text-embedding-v4}"
         return 0
     fi
     echo ""
@@ -1638,6 +1697,53 @@ step_llm() {
             error "$(msg llm.provider.invalid "${PROVIDER_CHOICE}")"
             ;;
     esac
+    # --- Embedding model (optional, auto-tested) ---
+    echo ""
+    log "$(msg llm.embedding.title)"
+    log "$(msg llm.embedding.hint)"
+    echo ""
+    echo "$(msg llm.embedding.option.default)"
+    echo "$(msg llm.embedding.option.custom)"
+    echo "$(msg llm.embedding.option.disable)"
+    echo ""
+    local EMB_CHOICE
+    read -e -p "$(msg llm.embedding.select) [1]: " EMB_CHOICE
+    EMB_CHOICE="${EMB_CHOICE:-1}"
+    if [ "${EMB_CHOICE}" = "b" ]; then STEP_RESULT="back"; return 0; fi
+
+    case "${EMB_CHOICE}" in
+        1)
+            HICLAW_EMBEDDING_MODEL="text-embedding-v4"
+            ;;
+        2)
+            read -e -p "$(msg llm.embedding.custom_prompt): " HICLAW_EMBEDDING_MODEL
+            if [ "${HICLAW_EMBEDDING_MODEL}" = "b" ]; then STEP_RESULT="back"; return 0; fi
+            if [ -z "${HICLAW_EMBEDDING_MODEL}" ]; then
+                HICLAW_EMBEDDING_MODEL=""
+                log "$(msg llm.embedding.disabled)"
+            fi
+            ;;
+        3)
+            HICLAW_EMBEDDING_MODEL=""
+            log "$(msg llm.embedding.disabled)"
+            ;;
+        *)
+            HICLAW_EMBEDDING_MODEL="text-embedding-v4"
+            ;;
+    esac
+
+    if [ -n "${HICLAW_EMBEDDING_MODEL}" ]; then
+        # Qwen provider uses dashscope directly; others use OPENAI_BASE_URL
+        local EMB_BASE_URL="${HICLAW_OPENAI_BASE_URL}"
+        if [ "${HICLAW_LLM_PROVIDER}" = "qwen" ]; then
+            EMB_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        fi
+        if ! test_embedding_connectivity "${EMB_BASE_URL}" "${HICLAW_LLM_API_KEY}" "${HICLAW_EMBEDDING_MODEL}"; then
+            HICLAW_EMBEDDING_MODEL=""
+            log "$(msg llm.embedding.auto_disabled)"
+        fi
+    fi
+
     export HICLAW_LLM_PROVIDER HICLAW_DEFAULT_MODEL
     [ -n "${HICLAW_OPENAI_BASE_URL+x}" ] && export HICLAW_OPENAI_BASE_URL
     log ""
@@ -1694,7 +1800,7 @@ step_ports() {
     prompt HICLAW_PORT_GATEWAY "$(msg port.gateway_prompt)" "18080" || return 0
     prompt HICLAW_PORT_CONSOLE "$(msg port.console_prompt)" "18001" || return 0
     prompt HICLAW_PORT_ELEMENT_WEB "$(msg port.element_prompt)" "18088" || return 0
-    prompt HICLAW_PORT_OPENCLAW_CONSOLE "$(msg port.openclaw_console_prompt)" "18888" || return 0
+    prompt HICLAW_PORT_MANAGER_CONSOLE "$(msg port.manager_console_prompt)" "18888" || return 0
     log ""
 }
 
@@ -1705,7 +1811,9 @@ step_domains() {
     prompt HICLAW_MATRIX_CLIENT_DOMAIN "$(msg domain.element_prompt)" "matrix-client-local.hiclaw.io" || return 0
     prompt HICLAW_AI_GATEWAY_DOMAIN "$(msg domain.gateway_prompt)" "aigw-local.hiclaw.io" || return 0
     prompt HICLAW_FS_DOMAIN "$(msg domain.fs_prompt)" "fs-local.hiclaw.io" || return 0
-    prompt HICLAW_CONSOLE_DOMAIN "$(msg domain.console_prompt)" "console-local.hiclaw.io" || return 0
+    if [ "${HICLAW_MANAGER_RUNTIME}" != "copaw" ]; then
+        prompt HICLAW_CONSOLE_DOMAIN "$(msg domain.console_prompt)" "console-local.hiclaw.io" || return 0
+    fi
     log ""
 }
 
@@ -1779,6 +1887,39 @@ step_runtime() {
     fi
     export HICLAW_DEFAULT_WORKER_RUNTIME
     log "$(msg worker_runtime.selected "${HICLAW_DEFAULT_WORKER_RUNTIME}")"
+}
+
+step_manager_runtime() {
+    log "$(msg manager_runtime.title)"
+    echo ""
+    echo "  1) $(msg manager_runtime.openclaw)"
+    echo "  2) $(msg manager_runtime.copaw)"
+    echo ""
+    if [ "${HICLAW_NON_INTERACTIVE}" = "1" ]; then
+        HICLAW_MANAGER_RUNTIME="${HICLAW_MANAGER_RUNTIME:-openclaw}"
+    elif [ "${HICLAW_UPGRADE}" = "1" ] && [ -n "${HICLAW_MANAGER_RUNTIME}" ]; then
+        log "$(msg prompt.upgrade_keep "$(msg manager_runtime.title_short)" "${HICLAW_MANAGER_RUNTIME}")"
+        local _runtime_choice
+        read -e -p "$(msg manager_runtime.choice): " _runtime_choice
+        if [ "${_runtime_choice}" = "b" ]; then STEP_RESULT="back"; return 0; fi
+        if [ -n "${_runtime_choice}" ]; then
+            case "${_runtime_choice}" in
+                2) HICLAW_MANAGER_RUNTIME="copaw" ;;
+                *) HICLAW_MANAGER_RUNTIME="openclaw" ;;
+            esac
+        fi
+    elif [ -z "${HICLAW_MANAGER_RUNTIME+x}" ]; then
+        local _runtime_choice
+        read -e -p "$(msg manager_runtime.choice): " _runtime_choice
+        if [ "${_runtime_choice}" = "b" ]; then STEP_RESULT="back"; return 0; fi
+        _runtime_choice="${_runtime_choice:-1}"
+        case "${_runtime_choice}" in
+            2) HICLAW_MANAGER_RUNTIME="copaw" ;;
+            *) HICLAW_MANAGER_RUNTIME="openclaw" ;;
+        esac
+    fi
+    export HICLAW_MANAGER_RUNTIME
+    log "$(msg manager_runtime.selected "${HICLAW_MANAGER_RUNTIME}")"
 }
 
 step_e2ee() {
@@ -1989,7 +2130,7 @@ install_manager() {
     # ── State machine ─────────────────────────────────────────────────────────
     local _STEPS=( step_lang step_mode step_version step_existing step_llm step_admin step_network \
                    step_ports step_domains step_github step_skills step_volume \
-                   step_workspace step_runtime step_e2ee step_docker_proxy step_idle step_hostshare )
+                   step_workspace step_manager_runtime step_runtime step_e2ee step_docker_proxy step_idle step_hostshare )
     local _STEP_HISTORY=()
     local _step_idx=0
     while [ "${_step_idx}" -lt "${#_STEPS[@]}" ]; do
@@ -2026,6 +2167,8 @@ install_manager() {
     fi
     HICLAW_WORKSPACE_DIR="$(cd "${HICLAW_WORKSPACE_DIR}" 2>/dev/null && pwd || echo "${HICLAW_WORKSPACE_DIR}")"
     mkdir -p "${HICLAW_WORKSPACE_DIR}"
+    HICLAW_MANAGER_RUNTIME="${HICLAW_MANAGER_RUNTIME:-openclaw}"
+    export HICLAW_MANAGER_RUNTIME
     HICLAW_DEFAULT_WORKER_RUNTIME="${HICLAW_DEFAULT_WORKER_RUNTIME:-openclaw}"
     HICLAW_MATRIX_E2EE="${HICLAW_MATRIX_E2EE:-0}"
     export HICLAW_MATRIX_E2EE
@@ -2063,6 +2206,9 @@ HICLAW_MODEL_MAX_TOKENS=${HICLAW_MODEL_MAX_TOKENS:-}
 HICLAW_MODEL_REASONING=${HICLAW_MODEL_REASONING:-}
 HICLAW_MODEL_VISION=${HICLAW_MODEL_VISION:-}
 
+# Embedding model (empty = disabled, default: text-embedding-v4)
+HICLAW_EMBEDDING_MODEL=${HICLAW_EMBEDDING_MODEL}
+
 # Admin
 HICLAW_ADMIN_USER=${HICLAW_ADMIN_USER}
 HICLAW_ADMIN_PASSWORD=${HICLAW_ADMIN_PASSWORD}
@@ -2072,7 +2218,10 @@ HICLAW_LOCAL_ONLY=${HICLAW_LOCAL_ONLY}
 HICLAW_PORT_GATEWAY=${HICLAW_PORT_GATEWAY}
 HICLAW_PORT_CONSOLE=${HICLAW_PORT_CONSOLE}
 HICLAW_PORT_ELEMENT_WEB=${HICLAW_PORT_ELEMENT_WEB}
-HICLAW_PORT_OPENCLAW_CONSOLE=${HICLAW_PORT_OPENCLAW_CONSOLE:-18888}
+HICLAW_PORT_MANAGER_CONSOLE=${HICLAW_PORT_MANAGER_CONSOLE:-18888}
+
+# Manager runtime (openclaw | copaw)
+HICLAW_MANAGER_RUNTIME=${HICLAW_MANAGER_RUNTIME:-openclaw}
 
 # Matrix
 HICLAW_MATRIX_DOMAIN=${HICLAW_MATRIX_DOMAIN}
@@ -2219,8 +2368,12 @@ EOF
         ${DOCKER_CMD} pull "${_img}"
     }
 
-    # Manager image is always required
-    _pull_image "${MANAGER_IMAGE}" "install.image.exists" "install.image.pulling_manager"
+    # Manager image is always required (select based on runtime)
+    if [ "${HICLAW_MANAGER_RUNTIME}" = "copaw" ]; then
+        _pull_image "${MANAGER_COPAW_IMAGE}" "install.image.exists" "install.image.pulling_manager"
+    else
+        _pull_image "${MANAGER_IMAGE}" "install.image.exists" "install.image.pulling_manager"
+    fi
 
     # Pull worker image for the selected runtime
     if [ "${HICLAW_DEFAULT_WORKER_RUNTIME}" = "copaw" ]; then
@@ -2326,6 +2479,7 @@ EOF
         -e HOME=/root/manager-workspace \
         -w /root/manager-workspace \
         -e HOST_ORIGINAL_HOME="${HICLAW_HOST_SHARE_DIR}" \
+        -e HICLAW_MANAGER_RUNTIME="${HICLAW_MANAGER_RUNTIME:-openclaw}" \
         ${YOLO_ARGS} \
         ${TZ_ARGS} \
         ${SOCKET_MOUNT_ARGS} \
@@ -2335,12 +2489,12 @@ EOF
         -p "${_port_prefix}${HICLAW_PORT_GATEWAY}:8080" \
         -p "${_port_prefix}${HICLAW_PORT_CONSOLE}:8001" \
         -p "${_port_prefix}${HICLAW_PORT_ELEMENT_WEB:-18088}:8088" \
-        -p "127.0.0.1:${HICLAW_PORT_OPENCLAW_CONSOLE:-18888}:18888" \
+        -p "127.0.0.1:${HICLAW_PORT_MANAGER_CONSOLE:-18888}:18888" \
         ${DATA_MOUNT_ARGS} \
         ${WORKSPACE_MOUNT_ARGS} \
         ${HOST_SHARE_MOUNT_ARGS} \
         --restart unless-stopped \
-        "${MANAGER_IMAGE}"
+        "$([ "${HICLAW_MANAGER_RUNTIME}" = "copaw" ] && echo "${MANAGER_COPAW_IMAGE}" || echo "${MANAGER_IMAGE}")"
     unset _port_prefix
 
     # Wait for Manager agent to be ready
@@ -2401,8 +2555,8 @@ EOF
     log ""
     log "$(msg success.other_consoles)"
     log "$(msg success.higress_console "${HICLAW_PORT_CONSOLE}" "${HICLAW_ADMIN_USER}" "${HICLAW_ADMIN_PASSWORD}")"
-    log "$(msg success.openclaw_console "${HICLAW_PORT_OPENCLAW_CONSOLE:-18888}")"
-    log "$(msg success.openclaw_console_gateway "${HICLAW_ADMIN_USER}" "${HICLAW_ADMIN_PASSWORD}")"
+    log "$(msg success.manager_console "${HICLAW_PORT_MANAGER_CONSOLE:-18888}")"
+    log "$(msg success.manager_console_gateway "${HICLAW_ADMIN_USER}" "${HICLAW_ADMIN_PASSWORD}")"
     log ""
     log "$(msg success.switch_llm.title)"
     log "$(msg success.switch_llm.hint)"
@@ -2544,6 +2698,35 @@ test_llm_connectivity() {
                 exit 1
             fi
         fi
+    fi
+}
+
+test_embedding_connectivity() {
+    local base_url="$1"
+    local api_key="$2"
+    local model="$3"
+    if ! command -v curl >/dev/null 2>&1; then
+        return 0
+    fi
+    log "$(msg llm.embedding.test.testing)"
+    local _body _http_code _tmpfile
+    _tmpfile=$(mktemp)
+    _http_code=$(curl -s -o "${_tmpfile}" -w "%{http_code}" \
+        -X POST "${base_url%/}/embeddings" \
+        -H "Authorization: Bearer ${api_key}" \
+        -H "Content-Type: application/json" \
+        -H "User-Agent: HiClaw/${HICLAW_VERSION:-latest}" \
+        --max-time 30 \
+        -d "{\"model\":\"${model}\",\"input\":\"test\"}" \
+        2>/dev/null)
+    _body=$(cat "${_tmpfile}")
+    rm -f "${_tmpfile}"
+    if [ "${_http_code}" = "200" ] || [ "${_http_code}" = "201" ]; then
+        log "$(msg llm.embedding.test.ok)"
+        return 0
+    else
+        echo -e "\033[33m$(msg llm.embedding.test.fail "${_http_code}" "${_body}")\033[0m"
+        return 1
     fi
 }
 
