@@ -574,25 +574,20 @@ class Worker:
             bridge_openclaw_to_copaw(openclaw_cfg, self._copaw_working_dir)
             console.print("[green]Config re-bridged.[/green]")
 
-            # Restart ChannelManager so MatrixChannel picks up new config
-            # (e.g., updated groupAllowFrom after team creation)
+            # Hot-update MatrixChannel's allowlist config without restarting
+            # (restarting cancels in-progress LLM requests with "Task has been cancelled!")
             if self._channel_manager is not None:
-                console.print("[yellow]Restarting channels to apply new config...[/yellow]")
-                await self._channel_manager.stop_all()
-
-                from copaw.config.utils import load_config
-                from copaw.app.channels.manager import ChannelManager
-                from copaw.app.channels.utils import make_process_from_runner
-                from copaw.app.channels.registry import clear_builtin_channel_cache
-
-                clear_builtin_channel_cache()
-                config = load_config()
-                self._channel_manager = ChannelManager.from_config(
-                    process=make_process_from_runner(self._runner),
-                    config=config,
-                    on_last_dispatch=None,
-                )
-                await self._channel_manager.start_all()
-                console.print("[green]Channels restarted with new config.[/green]")
+                for ch in self._channel_manager._channels:
+                    if hasattr(ch, '_cfg') and hasattr(ch._cfg, 'group_allow_from'):
+                        from copaw.config.utils import load_config
+                        new_config = load_config()
+                        matrix_cfg = (new_config.get("channels") or {}).get("matrix") or {}
+                        new_group_allow = matrix_cfg.get("group_allow_from", [])
+                        new_dm_allow = matrix_cfg.get("allow_from", [])
+                        if new_group_allow != ch._cfg.group_allow_from or new_dm_allow != ch._cfg.allow_from:
+                            ch._cfg.group_allow_from = new_group_allow
+                            ch._cfg.allow_from = new_dm_allow
+                            console.print("[green]MatrixChannel allowlist hot-updated.[/green]")
+                        break
         except Exception as exc:
             console.print(f"[red]Re-bridge failed: {exc}[/red]")
