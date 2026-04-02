@@ -210,15 +210,31 @@ class FileSync:
     # ------------------------------------------------------------------
 
     def _get_team_id(self) -> Optional[str]:
-        """Read team_id from local openclaw.json (injected by create-worker.sh)."""
+        """Read team name from AGENTS.md team-context section.
+
+        Parses the '- **Team**: {name}' line from the hiclaw-team-context block.
+        Falls back to team_id in openclaw.json for backward compatibility.
+        """
+        # Try AGENTS.md first (works for both OpenClaw and CoPaw)
+        agents_path = self.local_dir / "AGENTS.md"
+        if agents_path.exists():
+            try:
+                content = agents_path.read_text()
+                import re
+                m = re.search(r'\*\*Team\*\*:\s*(\S+)', content)
+                if m:
+                    return m.group(1)
+            except Exception:
+                pass
+        # Fallback: openclaw.json (CoPaw only, if team_id was injected)
         config_path = self.local_dir / "openclaw.json"
-        if not config_path.exists():
-            return None
-        try:
-            config = json.loads(config_path.read_text())
-            return config.get("team_id") or None
-        except Exception:
-            return None
+        if config_path.exists():
+            try:
+                config = json.loads(config_path.read_text())
+                return config.get("team_id") or None
+            except Exception:
+                pass
+        return None
 
     def get_config(self) -> dict[str, Any]:
         """Pull openclaw.json and return parsed dict."""
