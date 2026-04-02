@@ -2192,7 +2192,7 @@ function Install-Manager {
         & docker pull $script:MANAGER_IMAGE
     }
 
-    # Pull the worker image matching the selected runtime (on upgrade, also pull the other if present locally)
+    # Pull the worker image matching the selected runtime
     $selectedWorkerImage = if ($config.DEFAULT_WORKER_RUNTIME -eq "copaw") { $script:COPAW_WORKER_IMAGE } else { $script:WORKER_IMAGE }
     if ($selectedWorkerImage.StartsWith($LocalImagePrefix)) {
         $workerImageExists = docker image inspect $selectedWorkerImage 2>$null
@@ -2207,16 +2207,33 @@ function Install-Manager {
         & docker pull $selectedWorkerImage
     }
 
-    # During upgrade, also pull the other worker image if it exists locally
-    if ($script:HICLAW_UPGRADE) {
-        $otherWorkerImage = if ($config.DEFAULT_WORKER_RUNTIME -eq "copaw") { $script:WORKER_IMAGE } else { $script:COPAW_WORKER_IMAGE }
-        $otherExists = docker image inspect $otherWorkerImage 2>$null
-        if ($LASTEXITCODE -eq 0) {
-            if ($otherWorkerImage.StartsWith($LocalImagePrefix)) {
-                Write-Log (Get-Msg "install.image.worker_exists" -f $otherWorkerImage)
+    # Always pull copaw worker image — team workers require copaw runtime
+    if ($config.DEFAULT_WORKER_RUNTIME -ne "copaw") {
+        if ($script:COPAW_WORKER_IMAGE.StartsWith($LocalImagePrefix)) {
+            $copawExists = docker image inspect $script:COPAW_WORKER_IMAGE 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Log (Get-Msg "install.image.worker_exists" -f $script:COPAW_WORKER_IMAGE)
             } else {
-                Write-Log (Get-Msg "install.image.pulling_worker" -f $otherWorkerImage)
-                & docker pull $otherWorkerImage
+                Write-Log (Get-Msg "install.image.pulling_worker" -f $script:COPAW_WORKER_IMAGE)
+                & docker pull $script:COPAW_WORKER_IMAGE
+            }
+        } else {
+            Write-Log (Get-Msg "install.image.pulling_worker" -f $script:COPAW_WORKER_IMAGE)
+            & docker pull $script:COPAW_WORKER_IMAGE
+        }
+    }
+
+    # During upgrade, also pull openclaw worker image if it exists locally
+    if ($script:HICLAW_UPGRADE) {
+        if ($config.DEFAULT_WORKER_RUNTIME -eq "copaw") {
+            $otherExists = docker image inspect $script:WORKER_IMAGE 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                if ($script:WORKER_IMAGE.StartsWith($LocalImagePrefix)) {
+                    Write-Log (Get-Msg "install.image.worker_exists" -f $script:WORKER_IMAGE)
+                } else {
+                    Write-Log (Get-Msg "install.image.pulling_worker" -f $script:WORKER_IMAGE)
+                    & docker pull $script:WORKER_IMAGE
+                }
             }
         }
     }
