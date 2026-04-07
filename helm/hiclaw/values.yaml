@@ -28,6 +28,7 @@ credentials:
 # type: tuwunel | synapse (synapse support planned for Phase 2)
 matrixServer:
   type: tuwunel
+  serverName: ""        # Matrix server_name (e.g. "example.com"); defaults to Tuwunel cluster FQDN
   tuwunel:
     image:
       repository: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/tuwunel
@@ -167,6 +168,7 @@ manager:
 # ── Element Web (IM UI, optional) ─────────────────────────────────────────
 elementWeb:
   enabled: true
+  matrixServerUrl: ""   # Browser-accessible Matrix URL (e.g. http://localhost:18080); defaults to internal Tuwunel URL
   image:
     repository: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/element-web
     tag: "20260323"

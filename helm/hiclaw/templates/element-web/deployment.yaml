@@ -37,7 +37,7 @@ spec:
             or Ingress in production.
             */}}
             - name: MATRIX_SERVER_URL
-              value: {{ include "hiclaw.tuwunel.internalURL" . | quote }}
+              value: {{ .Values.elementWeb.matrixServerUrl | default (include "hiclaw.tuwunel.internalURL" .) | quote }}
           resources:
             {{- toYaml .Values.elementWeb.resources | nindent 12 }}
           readinessProbe:

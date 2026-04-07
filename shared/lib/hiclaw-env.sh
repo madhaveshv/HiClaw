@@ -5,7 +5,7 @@
 # Source this file instead of manually setting up Matrix/storage variables.
 #
 # Provides:
-#   HICLAW_RUNTIME         — "aliyun" | "docker" | "none"
+#   HICLAW_RUNTIME         — "aliyun" | "k8s" | "docker" | "none"
 #   HICLAW_MATRIX_SERVER   — Matrix server URL (works in both local and cloud)
 #   HICLAW_STORAGE_BUCKET  — bucket name for mc commands
 #   HICLAW_STORAGE_PREFIX  — "hiclaw/<bucket>" ready for mc paths
@@ -39,8 +39,8 @@ HICLAW_MATRIX_SERVER="${HICLAW_MATRIX_URL:-http://127.0.0.1:6167}"
 # AI Gateway: cloud mode uses env endpoint (HICLAW_AI_GATEWAY_URL), local uses domain:8080
 HICLAW_AI_GATEWAY_SERVER="${HICLAW_AI_GATEWAY_URL:-http://${HICLAW_AI_GATEWAY_DOMAIN:-aigw-local.hiclaw.io}:8080}"
 
-# Storage: cloud mode uses OSS bucket name, local uses MinIO default
-HICLAW_STORAGE_BUCKET="${HICLAW_OSS_BUCKET:-hiclaw-storage}"
+# Storage: cloud mode uses OSS bucket name, k8s uses Helm-injected HICLAW_MINIO_BUCKET, local uses MinIO default
+HICLAW_STORAGE_BUCKET="${HICLAW_OSS_BUCKET:-${HICLAW_MINIO_BUCKET:-hiclaw-storage}}"
 HICLAW_STORAGE_PREFIX="hiclaw/${HICLAW_STORAGE_BUCKET}"
 
 # ── Credential management ────────────────────────────────────────────────────

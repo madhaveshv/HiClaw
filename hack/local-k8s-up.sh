@@ -15,6 +15,8 @@
 #   HICLAW_CLUSTER_NAME         kind cluster name (default: hiclaw)
 #   HICLAW_NAMESPACE            K8s namespace (default: hiclaw)
 #   HICLAW_SKIP_KIND            Skip kind cluster creation (default: 0)
+#   HICLAW_SKIP_BUILD           Skip local image build (default: 0, set to 1 to use remote images)
+#   HICLAW_BUILD_K8S_IMAGE      Build lightweight k8s manager image instead of all-in-one (default: 0)
 #
 # Usage:
 #   HICLAW_LLM_API_KEY=sk-xxx ./hack/local-k8s-up.sh
@@ -27,6 +29,8 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CLUSTER_NAME="${HICLAW_CLUSTER_NAME:-hiclaw}"
 NAMESPACE="${HICLAW_NAMESPACE:-hiclaw}"
 SKIP_KIND="${HICLAW_SKIP_KIND:-0}"
+SKIP_BUILD="${HICLAW_SKIP_BUILD:-0}"
+BUILD_K8S_IMAGE="${HICLAW_BUILD_K8S_IMAGE:-0}"
 
 LLM_API_KEY="${HICLAW_LLM_API_KEY:-}"
 REGISTRATION_TOKEN="${HICLAW_REGISTRATION_TOKEN:-}"
@@ -37,7 +41,7 @@ error() { echo -e "\033[31m[HiClaw K8s ERROR]\033[0m $1" >&2; exit 1; }
 
 # ── Preflight checks ──────────────────────────────────────────────────────
 
-for cmd in kind helm kubectl; do
+for cmd in kind helm kubectl docker; do
     command -v "$cmd" >/dev/null 2>&1 || error "$cmd is required but not found"
 done
 
@@ -70,14 +74,48 @@ else
     log "Skipping kind cluster creation (HICLAW_SKIP_KIND=1)"
 fi
 
-# ── Step 2: Build Helm dependencies ──────────────────────────────────────
+# ── Step 2: Build & load local images ──────────────────────────────────────
+
+MANAGER_IMAGE="hiclaw/manager:local"
+ORCHESTRATOR_IMAGE="hiclaw/orchestrator:local"
+HELM_IMAGE_OVERRIDES=""
+
+if [ "$SKIP_BUILD" = "0" ]; then
+    log "Building local images..."
+
+    # Orchestrator
+    log "Building orchestrator image..."
+    docker build -t "$ORCHESTRATOR_IMAGE" -f "${PROJECT_ROOT}/orchestrator/Dockerfile" "${PROJECT_ROOT}/orchestrator"
+
+    # Manager (choose between all-in-one and k8s-lightweight)
+    if [ "$BUILD_K8S_IMAGE" = "1" ]; then
+        log "Building manager image (lightweight k8s)..."
+        docker build -t "$MANAGER_IMAGE" -f "${PROJECT_ROOT}/manager/Dockerfile.k8s" "${PROJECT_ROOT}"
+    else
+        log "Building manager image (all-in-one)..."
+        docker build -t "$MANAGER_IMAGE" -f "${PROJECT_ROOT}/manager/Dockerfile" "${PROJECT_ROOT}"
+    fi
+
+    log "Loading images into kind cluster..."
+    kind load docker-image "$MANAGER_IMAGE" --name "$CLUSTER_NAME"
+    kind load docker-image "$ORCHESTRATOR_IMAGE" --name "$CLUSTER_NAME"
+
+    HELM_IMAGE_OVERRIDES="--set manager.image.repository=hiclaw/manager --set manager.image.tag=local --set manager.image.pullPolicy=Never"
+    HELM_IMAGE_OVERRIDES="${HELM_IMAGE_OVERRIDES} --set orchestrator.image.repository=hiclaw/orchestrator --set orchestrator.image.tag=local --set orchestrator.image.pullPolicy=Never"
+
+    log "Local images built and loaded"
+else
+    log "Skipping local build (HICLAW_SKIP_BUILD=1), using remote images"
+fi
+
+# ── Step 3: Build Helm dependencies ────────────────────────────────────────
 
 CHART_DIR="${PROJECT_ROOT}/helm/hiclaw"
 
 log "Building Helm dependencies..."
 helm dependency build "$CHART_DIR" 2>/dev/null || true
 
-# ── Step 3: Helm install / upgrade ────────────────────────────────────────
+# ── Step 4: Helm install / upgrade ──────────────────────────────────────────
 
 log "Installing HiClaw via Helm..."
 helm upgrade --install hiclaw "$CHART_DIR" \
@@ -86,10 +124,11 @@ helm upgrade --install hiclaw "$CHART_DIR" \
     --set credentials.registrationToken="$REGISTRATION_TOKEN" \
     --set credentials.adminPassword="$ADMIN_PASSWORD" \
     --set credentials.llmApiKey="$LLM_API_KEY" \
+    ${HELM_IMAGE_OVERRIDES} \
     --timeout 10m \
     --wait=false
 
-# ── Step 4: Wait for core infrastructure ──────────────────────────────────
+# ── Step 5: Wait for core infrastructure ──────────────────────────────────
 
 log "Waiting for Tuwunel..."
 kubectl wait --for=condition=available deployment -l app.kubernetes.io/component=tuwunel \
@@ -103,7 +142,7 @@ log "Waiting for Orchestrator..."
 kubectl wait --for=condition=available deployment -l app.kubernetes.io/component=orchestrator \
     -n "$NAMESPACE" --timeout=120s 2>/dev/null || log "Orchestrator not ready yet"
 
-# ── Step 5: Print access information ──────────────────────────────────────
+# ── Step 6: Print access information ──────────────────────────────────────
 
 echo ""
 log "========================================="

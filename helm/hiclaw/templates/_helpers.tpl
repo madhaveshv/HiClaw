@@ -107,7 +107,11 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{- define "hiclaw.tuwunel.serverName" -}}
-{{- printf "%s:%d" (include "hiclaw.tuwunel.clusterFQDN" .) (.Values.matrixServer.tuwunel.service.port | int) }}
+{{- if .Values.matrixServer.serverName }}
+{{- .Values.matrixServer.serverName }}
+{{- else }}
+{{- include "hiclaw.tuwunel.clusterFQDN" . }}
+{{- end }}
 {{- end }}
 
 {{- define "hiclaw.minio.internalURL" -}}
@@ -116,6 +120,10 @@ app.kubernetes.io/component: {{ .component }}
 
 {{- define "hiclaw.orchestrator.internalURL" -}}
 {{- printf "http://%s.%s.svc.cluster.local:%d" (include "hiclaw.orchestrator.fullname" .) (include "hiclaw.namespace" .) (.Values.orchestrator.service.port | int) }}
+{{- end }}
+
+{{- define "hiclaw.higress.consoleURL" -}}
+{{- printf "http://higress-console.%s.svc.cluster.local:8080" (include "hiclaw.namespace" .) }}
 {{- end }}
 
 {{- define "hiclaw.higress.gatewayURL" -}}

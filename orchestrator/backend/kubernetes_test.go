@@ -133,8 +133,8 @@ func TestK8sCreate(t *testing.T) {
 	for _, env := range pod.Spec.Containers[0].Env {
 		envs[env.Name] = env.Value
 	}
-	if envs["HICLAW_RUNTIME"] != "aliyun" {
-		t.Fatalf("expected HICLAW_RUNTIME=aliyun, got %q", envs["HICLAW_RUNTIME"])
+	if envs["HICLAW_RUNTIME"] != "k8s" {
+		t.Fatalf("expected HICLAW_RUNTIME=k8s, got %q", envs["HICLAW_RUNTIME"])
 	}
 	if envs["HICLAW_WORKER_API_KEY"] != "worker-key" {
 		t.Fatalf("expected injected worker api key, got %q", envs["HICLAW_WORKER_API_KEY"])

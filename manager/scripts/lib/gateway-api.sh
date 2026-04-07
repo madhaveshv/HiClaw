@@ -15,6 +15,9 @@
 
 # ── Backend detection ─────────────────────────────────────────────────────────
 
+# Higress Console URL: k8s mode uses cluster-internal service, docker uses localhost
+_HIGRESS_CONSOLE_URL="${HIGRESS_CONSOLE_URL:-${HICLAW_HIGRESS_CONSOLE_URL:-http://127.0.0.1:8001}}"
+
 _detect_gateway_backend() {
     if [ "${HICLAW_RUNTIME:-}" = "aliyun" ]; then
         echo "aliyun"
@@ -38,7 +41,7 @@ gateway_ensure_session() {
     local admin_user="${HICLAW_ADMIN_USER:-admin}"
     local admin_password="${HICLAW_ADMIN_PASSWORD:-admin}"
 
-    curl -sf -o /dev/null -X POST http://127.0.0.1:8001/session/login \
+    curl -sf -o /dev/null -X POST "${_HIGRESS_CONSOLE_URL}/session/login" \
         -H 'Content-Type: application/json' \
         -c "${HIGRESS_COOKIE_FILE}" \
         -d '{"username":"'"${admin_user}"'","password":"'"${admin_password}"'"}' 2>/dev/null \
@@ -94,7 +97,7 @@ _gateway_higress_create_consumer() {
     local consumer_name="$1"
     local credential_key="$2"
 
-    curl -sf -X POST http://127.0.0.1:8001/v1/consumers \
+    curl -sf -X POST ${_HIGRESS_CONSOLE_URL}/v1/consumers \
         -b "${HIGRESS_COOKIE_FILE}" \
         -H 'Content-Type: application/json' \
         -d '{
@@ -149,7 +152,7 @@ _gateway_higress_authorize_routes() {
     local max_retries=5
 
     local ai_routes
-    ai_routes=$(curl -sf http://127.0.0.1:8001/v1/ai/routes \
+    ai_routes=$(curl -sf ${_HIGRESS_CONSOLE_URL}/v1/ai/routes \
         -b "${HIGRESS_COOKIE_FILE}" 2>/dev/null) \
         || { echo "[gateway-api] ERROR: Failed to list AI routes" >&2; return 1; }
 
@@ -161,7 +164,7 @@ _gateway_higress_authorize_routes() {
         local attempt=0
         while [ "${attempt}" -lt "${max_retries}" ]; do
             local route_resp route
-            route_resp=$(curl -sf "http://127.0.0.1:8001/v1/ai/routes/${route_name}" \
+            route_resp=$(curl -sf "${_HIGRESS_CONSOLE_URL}/v1/ai/routes/${route_name}" \
                 -b "${HIGRESS_COOKIE_FILE}" 2>/dev/null) || break
             route=$(echo "${route_resp}" | jq '.data // .' 2>/dev/null)
 
@@ -176,7 +179,7 @@ _gateway_higress_authorize_routes() {
 
             local http_code
             http_code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
-                "http://127.0.0.1:8001/v1/ai/routes/${route_name}" \
+                "${_HIGRESS_CONSOLE_URL}/v1/ai/routes/${route_name}" \
                 -b "${HIGRESS_COOKIE_FILE}" \
                 -H 'Content-Type: application/json' \
                 -d "${updated}")
@@ -222,7 +225,7 @@ _gateway_higress_authorize_mcp() {
     local mcp_servers_csv="${2:-}"
 
     local all_mcp_raw all_mcp
-    all_mcp_raw=$(curl -sf http://127.0.0.1:8001/v1/mcpServer \
+    all_mcp_raw=$(curl -sf ${_HIGRESS_CONSOLE_URL}/v1/mcpServer \
         -b "${HIGRESS_COOKIE_FILE}" 2>/dev/null) || true
     all_mcp=$(echo "${all_mcp_raw}" | jq '.data // .' 2>/dev/null || echo "${all_mcp_raw}")
 
@@ -256,7 +259,7 @@ _gateway_higress_authorize_mcp() {
         # Re-fetch the latest state right before each update to minimize the race window.
         # TODO: Add version-based conflict detection to the Higress mcpServer/consumers API.
         local fresh_mcp_raw fresh_mcp
-        fresh_mcp_raw=$(curl -sf http://127.0.0.1:8001/v1/mcpServer \
+        fresh_mcp_raw=$(curl -sf ${_HIGRESS_CONSOLE_URL}/v1/mcpServer \
             -b "${HIGRESS_COOKIE_FILE}" 2>/dev/null) || true
         fresh_mcp=$(echo "${fresh_mcp_raw}" | jq '.data // .' 2>/dev/null || echo "${fresh_mcp_raw}")
 
@@ -271,7 +274,7 @@ _gateway_higress_authorize_mcp() {
         done
         consumer_list="${consumer_list},\"${consumer_name}\"]"
 
-        curl -sf -X PUT http://127.0.0.1:8001/v1/mcpServer/consumers \
+        curl -sf -X PUT ${_HIGRESS_CONSOLE_URL}/v1/mcpServer/consumers \
             -b "${HIGRESS_COOKIE_FILE}" \
             -H 'Content-Type: application/json' \
             -d '{"mcpServerName":"'"${mcp_name}"'","consumers":'"${consumer_list}"'}' > /dev/null 2>&1 \

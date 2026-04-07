@@ -635,6 +635,21 @@ clean: ## Remove local images and test containers
 	-docker rmi $(LOCAL_OPENCLAW_BASE) 2>/dev/null
 	@echo "==> Clean complete"
 
+# ---------- Local K8s (kind + Helm) ----------
+
+local-k8s-up: ## Create kind cluster and deploy HiClaw via Helm
+	@bash hack/local-k8s-up.sh
+
+local-k8s-down: ## Tear down the local HiClaw kind cluster
+	@bash hack/local-k8s-down.sh
+
+helm-template: ## Render Helm templates locally (dry-run validation)
+	@helm template hiclaw helm/hiclaw/ \
+		--set credentials.registrationToken=test \
+		--set credentials.adminPassword=test \
+		--set credentials.llmApiKey=test \
+		--set aiGateway.higress.enabled=false
+
 # ---------- Help ----------
 
 help: ## Show this help
@@ -684,6 +699,11 @@ help: ## Show this help
 	@echo "  make test TEST_CONTAINER=my-test                # Use custom container name"
 	@echo "  make replay TASK=\"Create worker alice\"          # Send a task to Manager"
 	@echo "  make replay                                     # Interactive task input"
+	@echo ""
+	@echo "Local K8s (kind + Helm):"
+	@echo "  HICLAW_LLM_API_KEY=sk-xxx make local-k8s-up    # Create kind cluster + helm install"
+	@echo "  make local-k8s-down                             # Tear down kind cluster"
+	@echo "  make helm-template                              # Validate Helm templates"
 	@echo ""
 	@echo "Mirror variables (for 'make mirror-images'):"
 	@echo "  DATE_TAG         Tag for date-pinned images  (default: YYYYMMDD)"

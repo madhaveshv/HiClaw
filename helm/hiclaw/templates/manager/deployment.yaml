@@ -25,6 +25,25 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if eq .Values.objectStorage.type "minio" }}
+      initContainers:
+        - name: init-minio-bucket
+          image: "minio/mc:latest"
+          command:
+            - sh
+            - -c
+            - |
+              until mc alias set hiclaw {{ include "hiclaw.minio.internalURL" . }} "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" 2>/dev/null; do
+                echo "Waiting for MinIO..."; sleep 3
+              done
+              mc mb hiclaw/{{ .Values.objectStorage.minio.bucketName }} --ignore-existing
+              for dir in shared/knowledge shared/tasks workers hiclaw-config/workers hiclaw-config/teams hiclaw-config/humans; do
+                echo "" | mc pipe "hiclaw/{{ .Values.objectStorage.minio.bucketName }}/${dir}/.gitkeep" 2>/dev/null || true
+              done
+          envFrom:
+            - secretRef:
+                name: {{ include "hiclaw.minio.fullname" . }}
+      {{- end }}
       containers:
         - name: manager
           image: "{{ .Values.manager.image.repository }}:{{ $tag }}"
@@ -52,6 +71,8 @@ spec:
             {{- if eq .Values.aiGateway.type "higress" }}
             - name: HICLAW_AI_GATEWAY_URL
               value: {{ include "hiclaw.higress.gatewayURL" . | quote }}
+            - name: HICLAW_HIGRESS_CONSOLE_URL
+              value: {{ include "hiclaw.higress.consoleURL" . | quote }}
             {{- else if .Values.aiGateway.external.gatewayUrl }}
             - name: HICLAW_AI_GATEWAY_URL
               value: {{ .Values.aiGateway.external.gatewayUrl | quote }}

@@ -110,7 +110,11 @@ func (k *K8sBackend) Create(ctx context.Context, req CreateRequest) (*WorkerResu
 		req.Env = make(map[string]string)
 	}
 	mergeOSSRegionFromProcessEnv(req.Env)
-	req.Env["HICLAW_RUNTIME"] = "aliyun"
+	if rt := os.Getenv("HICLAW_RUNTIME"); rt != "" {
+		req.Env["HICLAW_RUNTIME"] = rt
+	} else {
+		req.Env["HICLAW_RUNTIME"] = "k8s"
+	}
 	if req.WorkerAPIKey != "" {
 		req.Env["HICLAW_WORKER_API_KEY"] = req.WorkerAPIKey
 	}
@@ -121,7 +125,7 @@ func (k *K8sBackend) Create(ctx context.Context, req CreateRequest) (*WorkerResu
 	image := req.Image
 	if req.Runtime == RuntimeCopaw && k.config.CopawWorkerImage != "" {
 		image = k.config.CopawWorkerImage
-	} else {
+	} else if k.config.WorkerImage != "" {
 		image = k.config.WorkerImage
 	}
 	if image == "" {
