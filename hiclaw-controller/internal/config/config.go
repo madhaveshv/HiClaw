@@ -140,7 +140,7 @@ func LoadConfig() *Config {
 		GWModelAPIID: os.Getenv("HICLAW_GW_MODEL_API_ID"),
 		GWEnvID:      os.Getenv("HICLAW_GW_ENV_ID"),
 
-		OSSBucket:       os.Getenv("HICLAW_OSS_BUCKET"),
+		OSSBucket:       envOrDefault("HICLAW_OSS_BUCKET", os.Getenv("HICLAW_MINIO_BUCKET")),
 		STSRoleArn:      os.Getenv("ALIBABA_CLOUD_ROLE_ARN"),
 		OIDCProviderArn: os.Getenv("ALIBABA_CLOUD_OIDC_PROVIDER_ARN"),
 		OIDCTokenFile:   os.Getenv("ALIBABA_CLOUD_OIDC_TOKEN_FILE"),
@@ -161,7 +161,7 @@ func LoadConfig() *Config {
 		MatrixAdminPassword:     envOrDefault("HICLAW_ADMIN_PASSWORD", "admin"),
 		MatrixE2EE:              os.Getenv("HICLAW_MATRIX_E2EE") == "1" || os.Getenv("HICLAW_MATRIX_E2EE") == "true",
 
-		OSSStoragePrefix: envOrDefault("HICLAW_STORAGE_PREFIX", "hiclaw/hiclaw-storage"),
+		OSSStoragePrefix: envOrDefault("HICLAW_STORAGE_PREFIX", "hiclaw/hiclaw"),
 
 		DefaultModel:       envOrDefault("HICLAW_DEFAULT_MODEL", "qwen3.5-plus"),
 		EmbeddingModel:     os.Getenv("HICLAW_EMBEDDING_MODEL"),
@@ -283,6 +283,9 @@ func (c *Config) OSSConfig() oss.Config {
 	return oss.Config{
 		StoragePrefix: c.OSSStoragePrefix,
 		Bucket:        c.OSSBucket,
+		Endpoint:      os.Getenv("HICLAW_MINIO_ENDPOINT"),
+		AccessKey:     os.Getenv("HICLAW_MINIO_ACCESS_KEY"),
+		SecretKey:     os.Getenv("HICLAW_MINIO_SECRET_KEY"),
 	}
 }
 

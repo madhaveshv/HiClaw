@@ -23,6 +23,8 @@ credentials:
   controllerApiKey: ""       # Controller auth key (auto-generated if empty)
   managerPassword: ""         # Manager Matrix password (auto-generated if empty)
   managerGatewayKey: ""       # Manager Higress consumer key (auto-generated if empty)
+  higressAdminUser: "admin"    # Higress console admin username
+  higressAdminPassword: "admin" # Higress console admin password
 
 # ── Matrix Server ─────────────────────────────────────────────────────────
 # type: tuwunel | synapse (synapse support planned for Phase 2)
@@ -108,6 +110,9 @@ higress:
       httpsPort: 443
     controller:
       replicas: 1
+  higress-console:
+    admin:
+      password: "admin"
 
 # ── Controller (CRD reconciler + worker lifecycle + gateway + credentials) ─
 controller:

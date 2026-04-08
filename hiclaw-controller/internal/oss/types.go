@@ -4,6 +4,9 @@ package oss
 type Config struct {
 	MCBinary      string // mc binary path, default "mc"
 	Alias         string // mc alias name, default "hiclaw"
+	Endpoint      string // MinIO endpoint URL, e.g. "http://minio:9000"
+	AccessKey     string // MinIO root access key
+	SecretKey     string // MinIO root secret key
 	StoragePrefix string // full mc prefix, e.g. "hiclaw/hiclaw-storage"
 	Bucket        string // bucket name for policy generation, e.g. "hiclaw-storage"
 }

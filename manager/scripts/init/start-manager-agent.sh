@@ -252,6 +252,8 @@ log "Manager Matrix token obtained (token prefix: ${MANAGER_TOKEN:0:10}...)"
 # Cloud (aliyun) mode: skip entirely (Higress managed externally)
 # ============================================================
 _HIGRESS_CONSOLE_URL=""
+_HIGRESS_USER="${HICLAW_HIGRESS_ADMIN_USER:-${HICLAW_ADMIN_USER}}"
+_HIGRESS_PASS="${HICLAW_HIGRESS_ADMIN_PASSWORD:-${HICLAW_ADMIN_PASSWORD}}"
 if [ "${HICLAW_RUNTIME}" = "k8s" ]; then
     _HIGRESS_CONSOLE_URL="${HICLAW_HIGRESS_CONSOLE_URL:-}"
 elif [ "${HICLAW_RUNTIME}" != "aliyun" ]; then
@@ -266,7 +268,7 @@ if [ -n "${_HIGRESS_CONSOLE_URL}" ]; then
     for i in $(seq 1 90); do
         INIT_RESULT=$(curl -s -X POST "${_HIGRESS_CONSOLE_URL}/system/init" \
             -H 'Content-Type: application/json' \
-            -d '{"adminUser":{"name":"'"${HICLAW_ADMIN_USER}"'","password":"'"${HICLAW_ADMIN_PASSWORD}"'","displayName":"'"${HICLAW_ADMIN_USER}"'"}}' 2>/dev/null) || true
+            -d '{"adminUser":{"name":"'"${_HIGRESS_USER}"'","password":"'"${_HIGRESS_PASS}"'","displayName":"'"${_HIGRESS_USER}"'"}}' 2>/dev/null) || true
         if echo "${INIT_RESULT}" | grep -qE '"success":true|already.?init' 2>/dev/null; then
             INIT_DONE=true
             break
@@ -290,7 +292,7 @@ if [ -n "${_HIGRESS_CONSOLE_URL}" ]; then
         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${_HIGRESS_CONSOLE_URL}/session/login" \
             -H 'Content-Type: application/json' \
             -c "${COOKIE_FILE}" \
-            -d '{"username":"'"${HICLAW_ADMIN_USER}"'","password":"'"${HICLAW_ADMIN_PASSWORD}"'"}' 2>/dev/null) || true
+            -d '{"username":"'"${_HIGRESS_USER}"'","password":"'"${_HIGRESS_PASS}"'"}' 2>/dev/null) || true
         if { [ "${HTTP_CODE}" = "200" ] || [ "${HTTP_CODE}" = "201" ]; } && [ -f "${COOKIE_FILE}" ] && [ -s "${COOKIE_FILE}" ]; then
             LOGIN_OK=true
             break
@@ -315,7 +317,7 @@ if [ -n "${_HIGRESS_CONSOLE_URL}" ]; then
             curl -s -o /dev/null -w '%{http_code}' -X POST "${_HIGRESS_CONSOLE_URL}/session/login" \
                 -H 'Content-Type: application/json' \
                 -c "${COOKIE_FILE}" \
-                -d '{"username":"'"${HICLAW_ADMIN_USER}"'","password":"'"${HICLAW_ADMIN_PASSWORD}"'"}' 2>/dev/null
+                -d '{"username":"'"${_HIGRESS_USER}"'","password":"'"${_HIGRESS_PASS}"'"}' 2>/dev/null
             VERIFY2=$(curl -s -o /dev/null -w '%{http_code}' "${_HIGRESS_CONSOLE_URL}/v1/consumers" -b "${COOKIE_FILE}" 2>/dev/null) || true
             if [ "${VERIFY2}" = "200" ]; then
                 log "Re-login successful, session verified"

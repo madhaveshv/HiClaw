@@ -195,6 +195,10 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 		if err != nil {
 			return r.failCreate(ctx, w, fmt.Sprintf("generate credentials: %v", err))
 		}
+		// Save immediately so retries reuse the same passwords
+		if err := r.Creds.Save(ctx, workerName, creds); err != nil {
+			return r.failCreate(ctx, w, fmt.Sprintf("save credentials: %v", err))
+		}
 	}
 
 	// --- Step 2: Register Matrix account ---
@@ -216,7 +220,6 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 		}
 		if err := r.OSSAdmin.EnsurePolicy(ctx, oss.PolicyRequest{
 			WorkerName: workerName,
-			Bucket:     "hiclaw-storage",
 			TeamName:   teamName,
 		}); err != nil {
 			return r.failCreate(ctx, w, fmt.Sprintf("MinIO policy creation failed: %v", err))
@@ -321,6 +324,15 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 	agentPrefix := fmt.Sprintf("agents/%s", workerName)
 	if err := r.OSS.PutObject(ctx, agentPrefix+"/openclaw.json", configJSON); err != nil {
 		return r.failCreate(ctx, w, fmt.Sprintf("config push to storage failed: %v", err))
+	}
+
+	// Generate SOUL.md (required by worker entrypoint)
+	soulContent := w.Spec.Soul
+	if soulContent == "" {
+		soulContent = fmt.Sprintf("# %s\n\nYou are %s, an AI worker agent.\n", workerName, workerName)
+	}
+	if err := r.OSS.PutObject(ctx, agentPrefix+"/SOUL.md", []byte(soulContent)); err != nil {
+		logger.Error(err, "SOUL.md push failed (non-fatal)")
 	}
 
 	// Generate mcporter-servers.json if MCP servers are authorized
@@ -591,6 +603,24 @@ func (r *WorkerReconciler) buildWorkerEnv(workerName string, creds *WorkerCreden
 		"OPENCLAW_DISABLE_BONJOUR":   "1",
 		"OPENCLAW_MDNS_HOSTNAME":     "hiclaw-w-" + workerName,
 		"HOME":                       "/root/hiclaw-fs/agents/" + workerName,
+	}
+	// Pass storage connection info from controller env to worker
+	for _, key := range []string{
+		"HICLAW_FS_ENDPOINT",
+		"HICLAW_MINIO_ENDPOINT",
+		"HICLAW_MINIO_BUCKET",
+		"HICLAW_STORAGE_PREFIX",
+		"HICLAW_CONTROLLER_URL",
+		"HICLAW_AI_GATEWAY_URL",
+		"HICLAW_MATRIX_URL",
+	} {
+		if v := os.Getenv(key); v != "" {
+			env[key] = v
+		}
+	}
+	// Worker entrypoint expects HICLAW_FS_ENDPOINT; fall back to MINIO_ENDPOINT
+	if env["HICLAW_FS_ENDPOINT"] == "" && env["HICLAW_MINIO_ENDPOINT"] != "" {
+		env["HICLAW_FS_ENDPOINT"] = env["HICLAW_MINIO_ENDPOINT"]
 	}
 	return env
 }

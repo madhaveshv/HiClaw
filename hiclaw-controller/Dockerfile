@@ -35,7 +35,9 @@ RUN apk add --no-cache curl && \
 # ============ Final: Minimal image with all artifacts ============
 FROM ${HIGRESS_REGISTRY}/higress/alpine:3.20
 
-RUN apk add --no-cache bash jq curl unzip
+RUN apk add --no-cache bash jq curl unzip && \
+    curl -fSL -o /usr/local/bin/mc https://dl.min.io/client/mc/release/linux-amd64/mc && \
+    chmod +x /usr/local/bin/mc
 
 COPY --from=builder /hiclaw-controller /usr/local/bin/hiclaw-controller
 COPY --from=builder /hiclaw /usr/local/bin/hiclaw

@@ -77,6 +77,10 @@ spec:
               value: {{ include "hiclaw.higress.gatewayURL" . | quote }}
             - name: HICLAW_HIGRESS_CONSOLE_URL
               value: {{ include "hiclaw.higress.consoleURL" . | quote }}
+            - name: HICLAW_HIGRESS_ADMIN_USER
+              value: {{ .Values.credentials.higressAdminUser | default "admin" | quote }}
+            - name: HICLAW_HIGRESS_ADMIN_PASSWORD
+              value: {{ .Values.credentials.higressAdminPassword | default "admin" | quote }}
             - name: HICLAW_ELEMENT_WEB_URL
               value: {{ printf "http://%s-element-web.%s.svc.cluster.local:%d" (include "hiclaw.fullname" .) (include "hiclaw.namespace" .) (.Values.elementWeb.service.port | int) | quote }}
             {{- else if .Values.aiGateway.external.gatewayUrl }}

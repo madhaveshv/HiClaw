@@ -96,13 +96,13 @@ func (h *LifecycleHandler) Sleep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	worker.Status.Phase = "Sleeping"
+	worker.Status.Phase = "Stopped"
 	worker.Status.Message = ""
 	if err := h.k8s.Status().Update(r.Context(), &worker); err != nil {
 		log.Printf("[WARN] failed to update worker status after sleep: %v", err)
 	}
 
-	httputil.WriteJSON(w, http.StatusOK, WorkerLifecycleResponse{Name: name, Phase: "Sleeping"})
+	httputil.WriteJSON(w, http.StatusOK, WorkerLifecycleResponse{Name: name, Phase: "Stopped"})
 }
 
 // EnsureReady handles POST /api/v1/workers/{name}/ensure-ready
@@ -125,7 +125,7 @@ func (h *LifecycleHandler) EnsureReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if worker.Status.Phase == "Sleeping" || worker.Status.Phase == "Stopped" {
+	if worker.Status.Phase == "Stopped" {
 		h.setReady(name, false)
 		if err := b.Start(r.Context(), name); err != nil {
 			log.Printf("[ERROR] ensure-ready start worker %s: %v", name, err)

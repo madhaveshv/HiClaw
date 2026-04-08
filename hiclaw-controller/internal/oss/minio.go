@@ -13,7 +13,8 @@ import (
 // This provides zero-migration-risk compatibility with the existing shell scripts
 // while hiding the mc implementation detail behind the StorageClient interface.
 type MinIOClient struct {
-	config Config
+	config     Config
+	aliasReady bool
 }
 
 // NewMinIOClient creates a StorageClient backed by the mc CLI.
@@ -27,11 +28,26 @@ func NewMinIOClient(cfg Config) *MinIOClient {
 	return &MinIOClient{config: cfg}
 }
 
+func (c *MinIOClient) ensureAlias(ctx context.Context) error {
+	if c.aliasReady || c.config.Endpoint == "" {
+		return nil
+	}
+	_, err := c.runMC(ctx, "alias", "set", c.config.Alias, c.config.Endpoint, c.config.AccessKey, c.config.SecretKey)
+	if err != nil {
+		return fmt.Errorf("mc alias set: %w", err)
+	}
+	c.aliasReady = true
+	return nil
+}
+
 func (c *MinIOClient) fullPath(key string) string {
 	return c.config.StoragePrefix + "/" + strings.TrimPrefix(key, "/")
 }
 
 func (c *MinIOClient) PutObject(ctx context.Context, key string, data []byte) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	tmpFile, err := os.CreateTemp("", "hiclaw-oss-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
@@ -48,11 +64,17 @@ func (c *MinIOClient) PutObject(ctx context.Context, key string, data []byte) er
 }
 
 func (c *MinIOClient) PutFile(ctx context.Context, localPath, key string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	_, err := c.runMC(ctx, "cp", localPath, c.fullPath(key))
 	return err
 }
 
 func (c *MinIOClient) GetObject(ctx context.Context, key string) ([]byte, error) {
+	if err := c.ensureAlias(ctx); err != nil {
+		return nil, err
+	}
 	out, err := c.runMC(ctx, "cat", c.fullPath(key))
 	if err != nil {
 		return nil, err
@@ -61,6 +83,9 @@ func (c *MinIOClient) GetObject(ctx context.Context, key string) ([]byte, error)
 }
 
 func (c *MinIOClient) Stat(ctx context.Context, key string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	_, err := c.runMC(ctx, "stat", c.fullPath(key))
 	if err != nil {
 		if strings.Contains(err.Error(), "Object does not exist") ||
@@ -73,11 +98,17 @@ func (c *MinIOClient) Stat(ctx context.Context, key string) error {
 }
 
 func (c *MinIOClient) DeleteObject(ctx context.Context, key string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	_, err := c.runMC(ctx, "rm", c.fullPath(key))
 	return err
 }
 
 func (c *MinIOClient) Mirror(ctx context.Context, src, dst string, opts MirrorOptions) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	args := []string{"mirror", src, dst}
 	if opts.Overwrite {
 		args = append(args, "--overwrite")
@@ -87,11 +118,17 @@ func (c *MinIOClient) Mirror(ctx context.Context, src, dst string, opts MirrorOp
 }
 
 func (c *MinIOClient) DeletePrefix(ctx context.Context, prefix string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	_, err := c.runMC(ctx, "rm", "--recursive", "--force", c.fullPath(prefix))
 	return err
 }
 
 func (c *MinIOClient) ListObjects(ctx context.Context, prefix string) ([]string, error) {
+	if err := c.ensureAlias(ctx); err != nil {
+		return nil, err
+	}
 	out, err := c.runMC(ctx, "ls", c.fullPath(prefix))
 	if err != nil {
 		return nil, err

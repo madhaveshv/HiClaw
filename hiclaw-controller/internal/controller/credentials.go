@@ -9,6 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 // WorkerCredentials holds persisted credentials for a worker.
@@ -125,4 +130,72 @@ func generateRandomHex(n int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// SecretCredentialStore persists credentials as K8s Secrets (incluster mode).
+// Secret name: hiclaw-creds-{workerName}
+type SecretCredentialStore struct {
+	Client    kubernetes.Interface
+	Namespace string
+}
+
+func (s *SecretCredentialStore) secretName(workerName string) string {
+	return "hiclaw-creds-" + workerName
+}
+
+func (s *SecretCredentialStore) Load(ctx context.Context, workerName string) (*WorkerCredentials, error) {
+	secret, err := s.Client.CoreV1().Secrets(s.Namespace).Get(ctx, s.secretName(workerName), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get credentials secret: %w", err)
+	}
+	return &WorkerCredentials{
+		MatrixPassword: string(secret.Data["WORKER_PASSWORD"]),
+		MinIOPassword:  string(secret.Data["WORKER_MINIO_PASSWORD"]),
+		GatewayKey:     string(secret.Data["WORKER_GATEWAY_KEY"]),
+		RoomID:         string(secret.Data["WORKER_ROOM_ID"]),
+	}, nil
+}
+
+func (s *SecretCredentialStore) Save(ctx context.Context, workerName string, creds *WorkerCredentials) error {
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      s.secretName(workerName),
+			Namespace: s.Namespace,
+			Labels: map[string]string{
+				"app":              "hiclaw",
+				"hiclaw.io/worker": workerName,
+				"hiclaw.io/type":   "worker-credentials",
+			},
+		},
+		Data: map[string][]byte{
+			"WORKER_PASSWORD":       []byte(creds.MatrixPassword),
+			"WORKER_MINIO_PASSWORD": []byte(creds.MinIOPassword),
+			"WORKER_GATEWAY_KEY":    []byte(creds.GatewayKey),
+			"WORKER_ROOM_ID":        []byte(creds.RoomID),
+		},
+	}
+
+	existing, err := s.Client.CoreV1().Secrets(s.Namespace).Get(ctx, s.secretName(workerName), metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			_, err = s.Client.CoreV1().Secrets(s.Namespace).Create(ctx, secret, metav1.CreateOptions{})
+			return err
+		}
+		return fmt.Errorf("get credentials secret: %w", err)
+	}
+	existing.Data = secret.Data
+	existing.Labels = secret.Labels
+	_, err = s.Client.CoreV1().Secrets(s.Namespace).Update(ctx, existing, metav1.UpdateOptions{})
+	return err
+}
+
+func (s *SecretCredentialStore) Delete(ctx context.Context, workerName string) error {
+	err := s.Client.CoreV1().Secrets(s.Namespace).Delete(ctx, s.secretName(workerName), metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }

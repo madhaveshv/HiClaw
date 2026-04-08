@@ -76,11 +76,17 @@ func main() {
 	gwClient := gateway.NewHigressClient(cfg.GatewayConfig(), nil)
 	ossClient := oss.NewMinIOClient(cfg.OSSConfig())
 	var ossAdminClient oss.StorageAdminClient
-	if cfg.KubeMode == "embedded" {
+	if os.Getenv("HICLAW_MINIO_ENDPOINT") != "" {
 		ossAdminClient = oss.NewMinIOAdminClient(cfg.OSSConfig())
 	}
 	agentGen := agentconfig.NewGenerator(cfg.AgentConfig())
-	credStore := &controller.FileCredentialStore{Dir: envOrDefault("HICLAW_CREDS_DIR", "/data/worker-creds")}
+	var credStore controller.CredentialStore
+	if cfg.KubeMode == "incluster" {
+		// Will be initialized after k8sClient is available
+		credStore = nil
+	} else {
+		credStore = &controller.FileCredentialStore{Dir: envOrDefault("HICLAW_CREDS_DIR", "/data/worker-creds")}
+	}
 
 	// --- Kube mode ---
 	var mgr ctrl.Manager
@@ -172,6 +178,11 @@ func main() {
 		authorizer := authpkg.NewAuthorizer()
 		authMw = authpkg.NewMiddleware(authenticator, enricher, authorizer, mgr.GetClient(), namespace)
 		logger.Info("K8s SA token authentication enabled", "audience", cfg.AuthAudience)
+
+		// Initialize Secret-based credential store for incluster mode
+		if credStore == nil {
+			credStore = &controller.SecretCredentialStore{Client: k8sClient, Namespace: namespace}
+		}
 	} else {
 		authMw = authpkg.NewMiddleware(nil, nil, authpkg.NewAuthorizer(), nil, namespace)
 		logger.Info("authentication disabled (no REST config)")

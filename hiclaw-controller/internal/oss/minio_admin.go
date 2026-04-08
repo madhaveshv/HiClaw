@@ -13,7 +13,8 @@ import (
 // MinIOAdminClient implements StorageAdminClient for embedded-mode MinIO.
 // It uses the `mc admin` CLI to manage users and policies.
 type MinIOAdminClient struct {
-	config Config
+	config     Config
+	aliasReady bool
 }
 
 // NewMinIOAdminClient creates a StorageAdminClient for managing MinIO users.
@@ -27,7 +28,24 @@ func NewMinIOAdminClient(cfg Config) *MinIOAdminClient {
 	return &MinIOAdminClient{config: cfg}
 }
 
+func (c *MinIOAdminClient) ensureAlias(ctx context.Context) error {
+	if c.aliasReady || c.config.Endpoint == "" {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, c.config.MCBinary, "alias", "set", c.config.Alias, c.config.Endpoint, c.config.AccessKey, c.config.SecretKey)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("mc alias set: %w (stderr: %s)", err, strings.TrimSpace(stderr.String()))
+	}
+	c.aliasReady = true
+	return nil
+}
+
 func (c *MinIOAdminClient) EnsureUser(ctx context.Context, username, password string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	// mc admin user add is idempotent — updates password if user exists
 	_, err := c.runMCAdmin(ctx, "user", "add", c.config.Alias, username, password)
 	if err != nil && !strings.Contains(err.Error(), "already") {
@@ -37,6 +55,9 @@ func (c *MinIOAdminClient) EnsureUser(ctx context.Context, username, password st
 }
 
 func (c *MinIOAdminClient) EnsurePolicy(ctx context.Context, req PolicyRequest) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	policyName := "worker-" + req.WorkerName
 	bucket := req.Bucket
 	if bucket == "" {
@@ -73,6 +94,9 @@ func (c *MinIOAdminClient) EnsurePolicy(ctx context.Context, req PolicyRequest) 
 }
 
 func (c *MinIOAdminClient) DeleteUser(ctx context.Context, username string) error {
+	if err := c.ensureAlias(ctx); err != nil {
+		return err
+	}
 	policyName := "worker-" + username
 	// Detach and remove policy first (ignore errors)
 	c.runMCAdmin(ctx, "policy", "detach", c.config.Alias, policyName, "--user", username)

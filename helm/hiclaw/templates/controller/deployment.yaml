@@ -71,7 +71,35 @@ spec:
             {{- if eq .Values.aiGateway.type "higress" }}
             - name: HIGRESS_BASE_URL
               value: {{ include "hiclaw.higress.consoleURL" . | quote }}
+            - name: HICLAW_HIGRESS_ADMIN_USER
+              value: {{ .Values.credentials.higressAdminUser | default "admin" | quote }}
+            - name: HICLAW_HIGRESS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: higress-console
+                  key: adminPassword
+            - name: HICLAW_AI_GATEWAY_URL
+              value: {{ include "hiclaw.higress.gatewayURL" . | quote }}
             {{- end }}
+            {{- /* Matrix connection (Go MatrixClient) */}}
+            - name: HICLAW_MATRIX_URL
+              value: {{ include "hiclaw.tuwunel.internalURL" . | quote }}
+            - name: HICLAW_MATRIX_DOMAIN
+              value: {{ include "hiclaw.tuwunel.serverName" . | quote }}
+            {{- /* OSS storage prefix */}}
+            - name: HICLAW_STORAGE_PREFIX
+              value: "hiclaw/{{ .Values.objectStorage.minio.bucketName }}"
+            {{- /* K8s mode runtime */}}
+            - name: HICLAW_RUNTIME
+              value: "k8s"
+            {{- /* K8s worker resource defaults */}}
+            - name: HICLAW_K8S_WORKER_CPU
+              value: {{ .Values.worker.resources.requests.cpu | default "1000m" | quote }}
+            - name: HICLAW_K8S_WORKER_MEMORY
+              value: {{ .Values.worker.resources.requests.memory | default "2Gi" | quote }}
+            {{- /* Credential persistence */}}
+            - name: HICLAW_CREDS_DIR
+              value: "/data/worker-creds"
             {{- range $k, $v := .Values.controller.env }}
             {{- if $v }}
             - name: {{ $k }}
@@ -80,6 +108,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: worker-creds
+              mountPath: /data/worker-creds
           readinessProbe:
             httpGet:
               path: /healthz
@@ -93,3 +124,6 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 3
+      volumes:
+        - name: worker-creds
+          emptyDir: {}
