@@ -128,6 +128,10 @@ func TestK8sCreate(t *testing.T) {
 	if len(pod.Spec.Volumes) != 1 || pod.Spec.Volumes[0].Name != "hiclaw-token" {
 		t.Fatalf("expected projected volume hiclaw-token, got %+v", pod.Spec.Volumes)
 	}
+	projSrc := pod.Spec.Volumes[0].Projected.Sources[0].ServiceAccountToken
+	if projSrc.Audience != "hiclaw-controller" {
+		t.Fatalf("expected default audience hiclaw-controller, got %q", projSrc.Audience)
+	}
 
 	envs := map[string]string{}
 	for _, env := range pod.Spec.Containers[0].Env {
@@ -141,6 +145,27 @@ func TestK8sCreate(t *testing.T) {
 	}
 	if envs["HICLAW_CONTROLLER_URL"] != "http://controller:8090" {
 		t.Fatalf("expected injected controller URL, got %q", envs["HICLAW_CONTROLLER_URL"])
+	}
+}
+
+func TestK8sCreateCustomAudience(t *testing.T) {
+	b := newTestK8sBackend()
+
+	_, err := b.Create(context.Background(), CreateRequest{
+		Name:         "bob",
+		AuthAudience: "custom-audience",
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	pod, err := b.client.Pods("hiclaw").Get(context.Background(), "hiclaw-worker-bob", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("expected worker pod to exist: %v", err)
+	}
+	projSrc := pod.Spec.Volumes[0].Projected.Sources[0].ServiceAccountToken
+	if projSrc.Audience != "custom-audience" {
+		t.Fatalf("expected custom-audience, got %q", projSrc.Audience)
 	}
 }
 

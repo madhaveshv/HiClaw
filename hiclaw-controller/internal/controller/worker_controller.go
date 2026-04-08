@@ -409,6 +409,7 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 				Runtime:            w.Spec.Runtime,
 				Env:                workerEnv,
 				ServiceAccountName: saName,
+				AuthAudience:       r.AuthAudience,
 			}
 
 			// Non-K8s backends need an explicit token (K8s uses projected volume).
@@ -846,6 +847,10 @@ func nilIfEmpty(s string) *string {
 }
 
 // ensureServiceAccount creates a SA + RoleBinding for the worker if it doesn't exist.
+// The RoleBinding references ClusterRole "hiclaw-worker" which must be provisioned
+// externally (e.g. by Helm chart or cluster init). The RoleBinding will be created
+// successfully even if the ClusterRole doesn't exist yet, but no permissions will
+// be granted until it does.
 func (r *WorkerReconciler) ensureServiceAccount(ctx context.Context, workerName string) error {
 	if r.K8sClient == nil {
 		return nil
@@ -925,6 +930,14 @@ func (r *WorkerReconciler) deleteServiceAccount(ctx context.Context, workerName 
 }
 
 // requestSAToken issues a short-lived SA token for non-K8s backends (Docker/SAE).
+//
+// TODO(auth): Docker/SAE workers receive this token as an env var, which is static
+// for the container lifetime. K8s pods use projected volumes with kubelet auto-rotation,
+// but Docker/SAE have no such mechanism. When the token expires, the worker loses the
+// ability to authenticate with the controller. Options to address:
+//   - Controller periodically re-issues tokens and pushes via OSS or shared volume
+//   - Worker calls a token-refresh endpoint before expiry (requires a renewal grace window)
+//   - Increase expiry to match typical worker lifetime (days/weeks) as interim mitigation
 func (r *WorkerReconciler) requestSAToken(ctx context.Context, workerName string) (string, error) {
 	if r.K8sClient == nil {
 		return "", nil

@@ -160,6 +160,10 @@ func (k *K8sBackend) Create(ctx context.Context, req CreateRequest) (*WorkerResu
 		WorkingDir: req.WorkingDir,
 	}
 
+	tokenAudience := req.AuthAudience
+	if tokenAudience == "" {
+		tokenAudience = "hiclaw-controller"
+	}
 	tokenExpSeconds := int64(3600)
 	projectedVol := corev1.Volume{
 		Name: "hiclaw-token",
@@ -167,7 +171,7 @@ func (k *K8sBackend) Create(ctx context.Context, req CreateRequest) (*WorkerResu
 			Projected: &corev1.ProjectedVolumeSource{
 				Sources: []corev1.VolumeProjection{{
 					ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
-						Audience:          "hiclaw-controller",
+						Audience:          tokenAudience,
 						ExpirationSeconds: &tokenExpSeconds,
 						Path:              "token",
 					},
@@ -189,7 +193,7 @@ func (k *K8sBackend) Create(ctx context.Context, req CreateRequest) (*WorkerResu
 		Containers:                   []corev1.Container{container},
 		RestartPolicy:                corev1.RestartPolicyAlways,
 		ServiceAccountName:           saName,
-		AutomountServiceAccountToken: boolPtr(false),
+		AutomountServiceAccountToken: boolPtr(false), // disable default mount; using projected volume with custom audience instead
 		Volumes:                      []corev1.Volume{projectedVol},
 	}
 	if tolerations := k.getCurrentPodTolerations(ctx); len(tolerations) > 0 {

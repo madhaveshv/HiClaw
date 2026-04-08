@@ -83,8 +83,9 @@ func NewHTTPServer(addr string, deps ServerDeps) *HTTPServer {
 	mux.Handle("DELETE /api/v1/gateway/consumers/{id}", mw.RequireAuthz(authpkg.ActionDelete, "gateway", nil)(http.HandlerFunc(gh.DeleteConsumer)))
 
 	// --- Credentials ---
+	// STS is self-scoped: no {name} in path; handler uses CallerIdentity to scope the issued token.
 	ch := NewCredentialsHandler(deps.STS)
-	mux.Handle("POST /api/v1/credentials/sts", mw.RequireAuthz(authpkg.ActionSTS, "worker", nameFn)(http.HandlerFunc(ch.RefreshSTS)))
+	mux.Handle("POST /api/v1/credentials/sts", mw.RequireAuthz(authpkg.ActionSTS, "worker", nil)(http.HandlerFunc(ch.RefreshSTS)))
 
 	// --- Docker API passthrough (embedded mode only) ---
 	if deps.KubeMode == "embedded" && deps.SocketPath != "" {

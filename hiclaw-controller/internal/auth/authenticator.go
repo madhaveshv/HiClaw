@@ -43,6 +43,11 @@ type Authenticator interface {
 }
 
 // TokenReviewAuthenticator validates tokens via the K8s TokenReview API.
+//
+// TODO(auth): The cache has no max size or periodic eviction. Expired entries are
+// ignored on read but not deleted. This is fine for the expected scale (entries ≈
+// active workers), but a periodic sweep or LRU cap should be added if the number
+// of unique tokens grows significantly.
 type TokenReviewAuthenticator struct {
 	client   kubernetes.Interface
 	audience string

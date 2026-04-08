@@ -50,8 +50,10 @@ type CreateRequest struct {
 
 	// SA-based auth — ServiceAccountName is set on K8s Pods (projected token).
 	// AuthToken is the pre-issued SA token for Docker/SAE backends.
+	// AuthAudience is the projected token audience (K8s backend only; defaults to "hiclaw-controller").
 	ServiceAccountName string `json:"-"`
 	AuthToken          string `json:"-"`
+	AuthAudience       string `json:"-"`
 }
 
 // Deployment modes returned by backends.
