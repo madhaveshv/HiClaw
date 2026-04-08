@@ -3,12 +3,12 @@ package controller
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/hiclaw/hiclaw-controller/internal/matrix"
 )
 
 // WorkerCredentials holds persisted credentials for a worker.
@@ -99,15 +99,15 @@ func parseEnvLine(line string) (string, string) {
 
 // GenerateCredentials creates a fresh set of worker credentials.
 func GenerateCredentials() (*WorkerCredentials, error) {
-	matrixPw, err := matrix.GeneratePassword(16)
+	matrixPw, err := generateRandomHex(16)
 	if err != nil {
 		return nil, fmt.Errorf("generate matrix password: %w", err)
 	}
-	minioPw, err := matrix.GeneratePassword(24)
+	minioPw, err := generateRandomHex(24)
 	if err != nil {
 		return nil, fmt.Errorf("generate minio password: %w", err)
 	}
-	gwKey, err := matrix.GeneratePassword(32)
+	gwKey, err := generateRandomHex(32)
 	if err != nil {
 		return nil, fmt.Errorf("generate gateway key: %w", err)
 	}
@@ -116,4 +116,13 @@ func GenerateCredentials() (*WorkerCredentials, error) {
 		MinIOPassword:  minioPw,
 		GatewayKey:     gwKey,
 	}, nil
+}
+
+// generateRandomHex returns n random bytes encoded as 2*n hex characters.
+func generateRandomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }

@@ -33,10 +33,10 @@ func newMockBackend() *mockBackend {
 	}
 }
 
-func (m *mockBackend) Name() string                          { return m.name }
-func (m *mockBackend) DeploymentMode() string                 { return backend.DeployLocal }
-func (m *mockBackend) Available(_ context.Context) bool      { return m.available }
-func (m *mockBackend) NeedsCredentialInjection() bool        { return false }
+func (m *mockBackend) Name() string                     { return m.name }
+func (m *mockBackend) DeploymentMode() string           { return backend.DeployLocal }
+func (m *mockBackend) Available(_ context.Context) bool { return m.available }
+func (m *mockBackend) NeedsCredentialInjection() bool   { return false }
 
 func (m *mockBackend) Create(_ context.Context, req backend.CreateRequest) (*backend.WorkerResult, error) {
 	if m.createErr != nil {
@@ -361,8 +361,7 @@ func TestCreateWorkerGenericError(t *testing.T) {
 }
 
 func TestGatewayNoBackend(t *testing.T) {
-	reg := backend.NewRegistry(nil, nil) // no gateway backends
-	h := NewGatewayHandler(reg)
+	h := NewGatewayHandler(nil) // nil gateway client
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /gateway/consumers", h.CreateConsumer)
 	mux.HandleFunc("POST /gateway/consumers/{id}/bind", h.BindConsumer)

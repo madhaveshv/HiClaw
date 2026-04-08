@@ -163,7 +163,7 @@ func main() {
 		ossAdminClient = oss.NewMinIOAdminClient(cfg.OSSConfig())
 	}
 	agentGen := agentconfig.NewGenerator(cfg.AgentConfig())
-	credStore := &controller.FileCredentialStore{Dir: "/data/worker-creds"}
+	credStore := &controller.FileCredentialStore{Dir: envOrDefault("HICLAW_CREDS_DIR", "/data/worker-creds")}
 
 	// --- Register reconcilers ---
 	sharedReconcilerFields := struct {
@@ -246,7 +246,7 @@ func main() {
 
 	// --- HTTP server (merged controller API routes) ---
 	httpServer := server.NewHTTPServer(cfg.HTTPAddr, cfg.KubeMode)
-	registerControllerAPIRoutes(httpServer.Mux, cfg, authMw, registry, keyStore, stsService)
+	registerControllerAPIRoutes(httpServer.Mux, cfg, authMw, registry, gwClient, keyStore, stsService)
 
 	go func() {
 		if err := httpServer.Start(); err != nil {
@@ -278,12 +278,13 @@ func registerControllerAPIRoutes(
 	cfg *config.Config,
 	authMw *authpkg.Middleware,
 	registry *backend.Registry,
+	gwClient gateway.Client,
 	keyStore *authpkg.KeyStore,
 	stsService *credentials.STSService,
 ) {
 	controllerURL := cfg.ControllerURL
 	workerHandler := workerapi.NewWorkerHandler(registry, keyStore, controllerURL)
-	gatewayHandler := workerapi.NewGatewayHandler(registry)
+	gatewayHandler := workerapi.NewGatewayHandler(gwClient)
 	stsHandler := credentials.NewHandler(stsService)
 
 	// Worker lifecycle — manager only

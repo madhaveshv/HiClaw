@@ -342,14 +342,9 @@ func (r *WorkerReconciler) handleCreate(ctx context.Context, w *v1beta1.Worker) 
 		logger.Error(err, "agent file sync failed (non-fatal)")
 	}
 
-	// Merge AGENTS.md (push builtin section from worker-agent template)
-	if err := r.mergeAndPushAgentsMD(ctx, workerName, agentPrefix); err != nil {
-		logger.Error(err, "AGENTS.md merge failed (non-fatal)")
-	}
-
-	// Inject coordination context into AGENTS.md
-	if err := r.injectCoordinationContext(ctx, workerName, agentPrefix, role, teamName, teamLeaderName); err != nil {
-		logger.Error(err, "coordination context injection failed (non-fatal)")
+	// Merge builtin AGENTS.md section + inject coordination context (single read-write)
+	if err := r.prepareAndPushAgentsMD(ctx, workerName, agentPrefix, role, teamName, teamLeaderName); err != nil {
+		logger.Error(err, "AGENTS.md prepare failed (non-fatal)")
 	}
 
 	// Push builtin skills from worker-agent template
@@ -451,6 +446,41 @@ func (r *WorkerReconciler) failUpdate(ctx context.Context, w *v1beta1.Worker, ms
 	return reconcile.Result{RequeueAfter: time.Minute}, fmt.Errorf("%s", msg)
 }
 
+// prepareAndPushAgentsMD merges the builtin AGENTS.md section and injects
+// coordination context in a single OSS read-write cycle (2 API calls instead of 4).
+func (r *WorkerReconciler) prepareAndPushAgentsMD(ctx context.Context, workerName, agentPrefix, role, teamName, teamLeaderName string) error {
+	builtinPath := r.WorkerAgentDir + "/AGENTS.md"
+	builtinContent, err := os.ReadFile(builtinPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read builtin AGENTS.md: %w", err)
+	}
+
+	existing, _ := r.OSS.GetObject(ctx, agentPrefix+"/AGENTS.md")
+
+	content := string(existing)
+	if len(builtinContent) > 0 {
+		content = agentconfig.MergeBuiltinSection(content, string(builtinContent))
+	}
+
+	coordCtx := agentconfig.CoordinationContext{
+		WorkerName:     workerName,
+		MatrixDomain:   r.MatrixDomain,
+		TeamName:       teamName,
+		TeamLeaderName: teamLeaderName,
+	}
+	if role == "team_leader" {
+		coordCtx.Role = "team_leader"
+	} else if teamLeaderName != "" {
+		coordCtx.Role = "worker"
+	} else {
+		coordCtx.Role = "standalone"
+	}
+	content = agentconfig.InjectCoordinationContext(content, coordCtx)
+
+	return r.OSS.PutObject(ctx, agentPrefix+"/AGENTS.md", []byte(content))
+}
+
+// Deprecated: use prepareAndPushAgentsMD for combined merge + inject operations.
 func (r *WorkerReconciler) mergeAndPushAgentsMD(ctx context.Context, workerName, agentPrefix string) error {
 	builtinPath := r.WorkerAgentDir + "/AGENTS.md"
 	builtinContent, err := os.ReadFile(builtinPath)
@@ -591,12 +621,9 @@ func (r *WorkerReconciler) handleUpdate(ctx context.Context, w *v1beta1.Worker) 
 		}
 	}
 
-	// Re-merge AGENTS.md builtin section and coordination context
-	if err := r.mergeAndPushAgentsMD(ctx, workerName, agentPrefix); err != nil {
-		logger.Error(err, "AGENTS.md merge failed (non-fatal)")
-	}
-	if err := r.injectCoordinationContext(ctx, workerName, agentPrefix, role, teamName, teamLeaderName); err != nil {
-		logger.Error(err, "coordination context injection failed (non-fatal)")
+	// Re-merge builtin AGENTS.md section + inject coordination context (single read-write)
+	if err := r.prepareAndPushAgentsMD(ctx, workerName, agentPrefix, role, teamName, teamLeaderName); err != nil {
+		logger.Error(err, "AGENTS.md prepare failed (non-fatal)")
 	}
 
 	// --- Step 3: Regenerate openclaw.json ---
