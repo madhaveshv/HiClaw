@@ -1,11 +1,11 @@
-{{- if .Values.orchestrator.serviceAccount.create }}
+{{- if .Values.controller.serviceAccount.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "hiclaw.orchestrator.fullname" . }}
+  name: {{ include "hiclaw.controller.fullname" . }}
   namespace: {{ include "hiclaw.namespace" . }}
   labels:
-    {{- include "hiclaw.component.labels" (dict "root" . "component" "orchestrator") | nindent 4 }}
+    {{- include "hiclaw.component.labels" (dict "root" . "component" "controller") | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -26,16 +26,16 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "hiclaw.orchestrator.fullname" . }}
+  name: {{ include "hiclaw.controller.fullname" . }}
   namespace: {{ include "hiclaw.namespace" . }}
   labels:
-    {{- include "hiclaw.component.labels" (dict "root" . "component" "orchestrator") | nindent 4 }}
+    {{- include "hiclaw.component.labels" (dict "root" . "component" "controller") | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "hiclaw.orchestrator.fullname" . }}
+  name: {{ include "hiclaw.controller.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "hiclaw.orchestrator.serviceAccountName" . }}
+    name: {{ include "hiclaw.controller.serviceAccountName" . }}
     namespace: {{ include "hiclaw.namespace" . }}
 {{- end }}

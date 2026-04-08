@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/alibaba/hiclaw/orchestrator/internal/httputil"
+	"github.com/hiclaw/hiclaw-controller/internal/httputil"
 )
 
 // Role constants.

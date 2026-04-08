@@ -67,8 +67,8 @@ Shared runtime Secret name.
 {{- printf "%s-manager" (include "hiclaw.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "hiclaw.orchestrator.fullname" -}}
-{{- printf "%s-orchestrator" (include "hiclaw.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- define "hiclaw.controller.fullname" -}}
+{{- printf "%s-controller" (include "hiclaw.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{- define "hiclaw.tuwunel.fullname" -}}
@@ -118,8 +118,8 @@ app.kubernetes.io/component: {{ .component }}
 {{- printf "http://%s.%s.svc.cluster.local:%d" (include "hiclaw.minio.fullname" .) (include "hiclaw.namespace" .) (.Values.objectStorage.minio.service.apiPort | int) }}
 {{- end }}
 
-{{- define "hiclaw.orchestrator.internalURL" -}}
-{{- printf "http://%s.%s.svc.cluster.local:%d" (include "hiclaw.orchestrator.fullname" .) (include "hiclaw.namespace" .) (.Values.orchestrator.service.port | int) }}
+{{- define "hiclaw.controller.internalURL" -}}
+{{- printf "http://%s.%s.svc.cluster.local:%d" (include "hiclaw.controller.fullname" .) (include "hiclaw.namespace" .) (.Values.controller.service.port | int) }}
 {{- end }}
 
 {{- define "hiclaw.higress.consoleURL" -}}
@@ -137,11 +137,11 @@ app.kubernetes.io/component: {{ .component }}
 
 {{/* ── ServiceAccount helpers ──────────────────────────────────────────── */}}
 
-{{- define "hiclaw.orchestrator.serviceAccountName" -}}
-{{- if .Values.orchestrator.serviceAccount.create }}
-{{- default (include "hiclaw.orchestrator.fullname" .) .Values.orchestrator.serviceAccount.name }}
+{{- define "hiclaw.controller.serviceAccountName" -}}
+{{- if .Values.controller.serviceAccount.create }}
+{{- default (include "hiclaw.controller.fullname" .) .Values.controller.serviceAccount.name }}
 {{- else }}
-{{- default "default" .Values.orchestrator.serviceAccount.name }}
+{{- default "default" .Values.controller.serviceAccount.name }}
 {{- end }}
 {{- end }}
 

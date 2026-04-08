@@ -1,9 +1,9 @@
-{{- $comp := dict "root" . "component" "orchestrator" }}
-{{- $tag := include "hiclaw.imageTag" (dict "tag" .Values.orchestrator.image.tag "global" .Values.global) }}
+{{- $comp := dict "root" . "component" "controller" }}
+{{- $tag := include "hiclaw.imageTag" (dict "tag" .Values.controller.image.tag "global" .Values.global) }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "hiclaw.orchestrator.fullname" . }}
+  name: {{ include "hiclaw.controller.fullname" . }}
   namespace: {{ include "hiclaw.namespace" . }}
   labels:
     {{- include "hiclaw.component.labels" $comp | nindent 4 }}
@@ -17,31 +17,31 @@ spec:
       labels:
         {{- include "hiclaw.component.selectorLabels" $comp | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "hiclaw.orchestrator.serviceAccountName" . }}
+      serviceAccountName: {{ include "hiclaw.controller.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: orchestrator
-          image: "{{ .Values.orchestrator.image.repository }}:{{ $tag }}"
-          imagePullPolicy: {{ .Values.orchestrator.image.pullPolicy }}
+        - name: controller
+          image: "{{ .Values.controller.image.repository }}:{{ $tag }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.orchestrator.service.targetPort }}
+              containerPort: {{ .Values.controller.service.targetPort }}
               protocol: TCP
           envFrom:
             - secretRef:
                 name: {{ include "hiclaw.secretName" . }}
           env:
-            - name: HICLAW_PROXY_LISTEN
-              value: {{ printf ":%v" .Values.orchestrator.service.targetPort | quote }}
-            - name: HICLAW_ORCHESTRATOR_URL
-              value: {{ include "hiclaw.orchestrator.internalURL" . | quote }}
-            - name: HICLAW_RUNTIME
-              value: "k8s"
+            - name: HICLAW_KUBE_MODE
+              value: "incluster"
+            - name: HICLAW_HTTP_ADDR
+              value: {{ printf ":%v" .Values.controller.service.targetPort | quote }}
+            - name: HICLAW_CONTROLLER_URL
+              value: {{ include "hiclaw.controller.internalURL" . | quote }}
             - name: HICLAW_WORKER_BACKEND
-              value: {{ .Values.orchestrator.workerBackend | quote }}
+              value: {{ .Values.controller.workerBackend | quote }}
             - name: HICLAW_K8S_NAMESPACE
               valueFrom:
                 fieldRef:
@@ -51,7 +51,7 @@ spec:
             - name: HICLAW_COPAW_WORKER_IMAGE
               value: {{ include "hiclaw.worker.copawImage" . | quote }}
             - name: TZ
-              value: {{ .Values.orchestrator.timezone | quote }}
+              value: {{ .Values.controller.timezone | quote }}
             {{- if eq .Values.objectStorage.type "minio" }}
             - name: HICLAW_MINIO_ENDPOINT
               value: {{ include "hiclaw.minio.internalURL" . | quote }}
@@ -68,21 +68,27 @@ spec:
             - name: HICLAW_MINIO_BUCKET
               value: {{ .Values.objectStorage.minio.bucketName | quote }}
             {{- end }}
-            {{- range $k, $v := .Values.orchestrator.env }}
+            {{- if eq .Values.aiGateway.type "higress" }}
+            - name: HIGRESS_BASE_URL
+              value: {{ include "hiclaw.higress.consoleURL" . | quote }}
+            {{- end }}
+            {{- range $k, $v := .Values.controller.env }}
             {{- if $v }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
             {{- end }}
           resources:
-            {{- toYaml .Values.orchestrator.resources | nindent 12 }}
+            {{- toYaml .Values.controller.resources | nindent 12 }}
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /healthz
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20

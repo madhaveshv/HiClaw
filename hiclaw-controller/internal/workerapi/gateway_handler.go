@@ -1,12 +1,12 @@
-package api
+package workerapi
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 
-	"github.com/alibaba/hiclaw/orchestrator/backend"
-	"github.com/alibaba/hiclaw/orchestrator/internal/httputil"
+	"github.com/hiclaw/hiclaw-controller/internal/backend"
+	"github.com/hiclaw/hiclaw-controller/internal/httputil"
 )
 
 // GatewayHandler handles /gateway/* HTTP requests.

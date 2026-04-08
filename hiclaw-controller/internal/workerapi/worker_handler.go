@@ -1,4 +1,4 @@
-package api
+package workerapi
 
 import (
 	"encoding/json"
@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/alibaba/hiclaw/orchestrator/auth"
-	"github.com/alibaba/hiclaw/orchestrator/backend"
-	"github.com/alibaba/hiclaw/orchestrator/internal/httputil"
+	"github.com/hiclaw/hiclaw-controller/internal/auth"
+	"github.com/hiclaw/hiclaw-controller/internal/backend"
+	"github.com/hiclaw/hiclaw-controller/internal/httputil"
 )
 
 // WorkerHandler handles /workers/* HTTP requests.

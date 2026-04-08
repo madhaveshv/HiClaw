@@ -68,9 +68,9 @@ spec:
               value: {{ include "hiclaw.tuwunel.internalURL" . | quote }}
             - name: HICLAW_MATRIX_DOMAIN
               value: {{ include "hiclaw.tuwunel.serverName" . | quote }}
-            {{- /* Orchestrator connection */}}
+            {{- /* Controller connection (provides worker lifecycle + gateway + STS APIs) */}}
             - name: HICLAW_ORCHESTRATOR_URL
-              value: {{ include "hiclaw.orchestrator.internalURL" . | quote }}
+              value: {{ include "hiclaw.controller.internalURL" . | quote }}
             {{- /* AI Gateway connection */}}
             {{- if eq .Values.aiGateway.type "higress" }}
             - name: HICLAW_AI_GATEWAY_URL

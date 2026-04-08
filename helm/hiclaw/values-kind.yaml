@@ -36,7 +36,7 @@ objectStorage:
         memory: 512Mi
 
 # Reduced resource requests for local dev
-orchestrator:
+controller:
   resources:
     requests:
       cpu: 50m

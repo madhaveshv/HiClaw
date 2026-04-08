@@ -1,6 +1,6 @@
-package api
+package workerapi
 
-import "github.com/alibaba/hiclaw/orchestrator/backend"
+import "github.com/hiclaw/hiclaw-controller/internal/backend"
 
 // --- Worker API types ---
 

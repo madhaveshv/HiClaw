@@ -1,17 +1,17 @@
-{{- $comp := dict "root" . "component" "orchestrator" }}
+{{- $comp := dict "root" . "component" "controller" }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "hiclaw.orchestrator.fullname" . }}
+  name: {{ include "hiclaw.controller.fullname" . }}
   namespace: {{ include "hiclaw.namespace" . }}
   labels:
     {{- include "hiclaw.component.labels" $comp | nindent 4 }}
 spec:
-  type: {{ .Values.orchestrator.service.type }}
+  type: {{ .Values.controller.service.type }}
   selector:
     {{- include "hiclaw.component.selectorLabels" $comp | nindent 4 }}
   ports:
     - name: http
-      port: {{ .Values.orchestrator.service.port }}
+      port: {{ .Values.controller.service.port }}
       targetPort: http
       protocol: TCP

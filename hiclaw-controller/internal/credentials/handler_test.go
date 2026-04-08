@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/alibaba/hiclaw/orchestrator/auth"
+	"github.com/hiclaw/hiclaw-controller/internal/auth"
 )
 
 func TestHandlerRefreshToken(t *testing.T) {

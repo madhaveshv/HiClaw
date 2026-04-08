@@ -24,7 +24,7 @@ Namespace: {{ include "hiclaw.namespace" . }}
 4. Manager Agent connects to:
 
    Matrix:       {{ include "hiclaw.tuwunel.internalURL" . }}
-   Orchestrator: {{ include "hiclaw.orchestrator.internalURL" . }}
+   Controller:   {{ include "hiclaw.controller.internalURL" . }}
    AI Gateway:   {{ include "hiclaw.higress.gatewayURL" . }}
 
 5. View logs:

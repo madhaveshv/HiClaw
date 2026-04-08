@@ -12,13 +12,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// HTTPServer provides a REST API for cloud management integration.
-// In embedded mode, it writes YAML to MinIO (controller picks up via file watcher).
-// In incluster mode, it operates K8s API directly.
+// HTTPServer serves both the controller management API and the merged
+// orchestrator worker/gateway/credentials APIs on a single port.
 type HTTPServer struct {
 	KubeMode      string // "embedded" or "incluster"
 	StoragePrefix string // e.g. "hiclaw/hiclaw-storage"
 	Addr          string
+	Mux           *http.ServeMux
 }
 
 func NewHTTPServer(addr, kubeMode string) *HTTPServer {
@@ -26,29 +26,31 @@ func NewHTTPServer(addr, kubeMode string) *HTTPServer {
 	if prefix == "" {
 		prefix = "hiclaw/hiclaw-storage"
 	}
-	return &HTTPServer{
+
+	mux := http.NewServeMux()
+	s := &HTTPServer{
 		KubeMode:      kubeMode,
 		StoragePrefix: prefix,
 		Addr:          addr,
+		Mux:           mux,
 	}
-}
-
-func (s *HTTPServer) Start() error {
-	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/api/v1/apply", s.handleApply)
 	mux.HandleFunc("/api/v1/workers", s.handleList("worker"))
 	mux.HandleFunc("/api/v1/teams", s.handleList("team"))
 	mux.HandleFunc("/api/v1/humans", s.handleList("human"))
-	// Single resource: /api/v1/workers/{name}
 	mux.HandleFunc("/api/v1/workers/", s.handleResource("worker"))
 	mux.HandleFunc("/api/v1/teams/", s.handleResource("team"))
 	mux.HandleFunc("/api/v1/humans/", s.handleResource("human"))
 
+	return s
+}
+
+func (s *HTTPServer) Start() error {
 	logger := log.Log.WithName("http-server")
 	logger.Info("starting HTTP API server", "addr", s.Addr, "mode", s.KubeMode)
-	return http.ListenAndServe(s.Addr, mux)
+	return http.ListenAndServe(s.Addr, s.Mux)
 }
 
 func (s *HTTPServer) handleHealthz(w http.ResponseWriter, r *http.Request) {

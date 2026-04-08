@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1beta1 "github.com/hiclaw/hiclaw-controller/api/v1beta1"
+	"github.com/hiclaw/hiclaw-controller/internal/backend"
 	"github.com/hiclaw/hiclaw-controller/internal/executor"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,18 +22,20 @@ const (
 	finalizerName = "hiclaw.io/cleanup"
 )
 
-// WorkerReconciler reconciles Worker resources by calling existing bash scripts.
+// WorkerReconciler reconciles Worker resources.
+// In embedded mode, it delegates to bash scripts (create-worker.sh etc.).
+// In incluster mode, the Backend registry handles container lifecycle.
 type WorkerReconciler struct {
 	client.Client
 	Executor *executor.Shell
 	Packages *executor.PackageResolver
 	Higress  *HigressClient
 
-	// lastSpec tracks the last-processed spec per worker name (in memory).
-	// Used by handleUpdate to detect real spec changes via DeepEqual.
-	// Stored in memory (not annotations) to avoid r.Update() calls that
-	// would overwrite spec changes made by the file-watcher during long
-	// create-worker.sh runs (~30s).
+	// Backend provides container lifecycle operations (Docker, K8s, SAE).
+	// Used by the HTTP API and available for future reconciler integration.
+	Backend  *backend.Registry
+	KubeMode string // "embedded" or "incluster"
+
 	lastSpecMu sync.Mutex
 	lastSpec   map[string]v1beta1.WorkerSpec
 }

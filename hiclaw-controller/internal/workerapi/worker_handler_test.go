@@ -1,4 +1,4 @@
-package api
+package workerapi
 
 import (
 	"bytes"
@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/alibaba/hiclaw/orchestrator/auth"
-	"github.com/alibaba/hiclaw/orchestrator/backend"
+	"github.com/hiclaw/hiclaw-controller/internal/auth"
+	"github.com/hiclaw/hiclaw-controller/internal/backend"
 )
 
 // mockBackend implements backend.WorkerBackend for handler tests.

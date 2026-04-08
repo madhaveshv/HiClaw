@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/alibaba/hiclaw/orchestrator/auth"
-	"github.com/alibaba/hiclaw/orchestrator/internal/httputil"
+	"github.com/hiclaw/hiclaw-controller/internal/auth"
+	"github.com/hiclaw/hiclaw-controller/internal/httputil"
 )
 
 // Handler handles /credentials/* HTTP requests.

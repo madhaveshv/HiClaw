@@ -1,24 +1,36 @@
-package main
+package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 
-	"github.com/alibaba/hiclaw/orchestrator/backend"
-	"github.com/alibaba/hiclaw/orchestrator/credentials"
+	"github.com/hiclaw/hiclaw-controller/internal/backend"
+	"github.com/hiclaw/hiclaw-controller/internal/credentials"
 )
 
-// Config holds all configuration for the orchestrator service.
 type Config struct {
-	// ListenAddr is the address to listen on (default ":2375").
-	ListenAddr string
-	// SocketPath is the Docker socket path (default "/var/run/docker.sock").
-	SocketPath string
-	// ContainerPrefix is the required prefix for worker container names (default "hiclaw-worker-").
+	// Controller core
+	KubeMode  string // "embedded" or "incluster"
+	DataDir   string
+	HTTPAddr  string
+	ConfigDir string
+	CRDDir    string
+	SkillsDir string
+
+	// Docker proxy (embedded mode only)
+	SocketPath      string
 	ContainerPrefix string
 
 	// Auth
 	ManagerAPIKey string // HICLAW_ORCHESTRATOR_API_KEY
+
+	// Higress
+	HigressBaseURL    string
+	HigressCookieFile string
+
+	// Worker backend selection
+	WorkerBackend string
 
 	// SAE Backend
 	Region              string
@@ -36,9 +48,6 @@ type Config struct {
 	GWModelAPIID string
 	GWEnvID      string
 
-	// Worker backend selection
-	WorkerBackend string
-
 	// STS
 	OSSBucket       string
 	STSRoleArn      string
@@ -50,18 +59,38 @@ type Config struct {
 	K8sWorkerCPU    string
 	K8sWorkerMemory string
 
-	// Orchestrator URL (advertised to workers for STS refresh)
-	OrchestratorURL string
+	// Controller URL (advertised to workers for STS refresh etc.)
+	ControllerURL string
 }
 
-// LoadConfig reads configuration from environment variables.
 func LoadConfig() *Config {
+	dataDir := envOrDefault("HICLAW_DATA_DIR", "/data/hiclaw-controller")
+	if !filepath.IsAbs(dataDir) {
+		if wd, err := os.Getwd(); err == nil {
+			dataDir = filepath.Join(wd, dataDir)
+		}
+	}
+
 	return &Config{
-		ListenAddr:      envOrDefault("HICLAW_PROXY_LISTEN", ":2375"),
+		KubeMode:  envOrDefault("HICLAW_KUBE_MODE", "embedded"),
+		DataDir:   dataDir,
+		HTTPAddr:  envOrDefault("HICLAW_HTTP_ADDR", ":8090"),
+		ConfigDir: envOrDefault("HICLAW_CONFIG_DIR", "/root/hiclaw-fs/hiclaw-config"),
+		CRDDir:    envOrDefault("HICLAW_CRD_DIR", "/opt/hiclaw/config/crd"),
+		SkillsDir: envOrDefault("HICLAW_SKILLS_DIR", "/opt/hiclaw/agent/skills"),
+
 		SocketPath:      envOrDefault("HICLAW_PROXY_SOCKET", "/var/run/docker.sock"),
 		ContainerPrefix: envOrDefault("HICLAW_PROXY_CONTAINER_PREFIX", "hiclaw-worker-"),
 
 		ManagerAPIKey: os.Getenv("HICLAW_ORCHESTRATOR_API_KEY"),
+
+		HigressBaseURL:    envOrDefault("HIGRESS_BASE_URL", "http://127.0.0.1:8001"),
+		HigressCookieFile: os.Getenv("HIGRESS_COOKIE_FILE"),
+
+		WorkerBackend: firstNonEmpty(
+			os.Getenv("HICLAW_WORKER_BACKEND"),
+			os.Getenv("HICLAW_ALIYUN_WORKER_BACKEND"),
+		),
 
 		Region:              envOrDefault("HICLAW_REGION", "cn-hangzhou"),
 		SAENamespaceID:      os.Getenv("HICLAW_SAE_NAMESPACE_ID"),
@@ -76,10 +105,6 @@ func LoadConfig() *Config {
 		GWGatewayID:  os.Getenv("HICLAW_GW_GATEWAY_ID"),
 		GWModelAPIID: os.Getenv("HICLAW_GW_MODEL_API_ID"),
 		GWEnvID:      os.Getenv("HICLAW_GW_ENV_ID"),
-		WorkerBackend: firstNonEmpty(
-			os.Getenv("HICLAW_WORKER_BACKEND"),
-			os.Getenv("HICLAW_ALIYUN_WORKER_BACKEND"),
-		),
 
 		OSSBucket:       os.Getenv("HICLAW_OSS_BUCKET"),
 		STSRoleArn:      os.Getenv("ALIBABA_CLOUD_ROLE_ARN"),
@@ -90,7 +115,10 @@ func LoadConfig() *Config {
 		K8sWorkerCPU:    envOrDefault("HICLAW_K8S_WORKER_CPU", "1000m"),
 		K8sWorkerMemory: envOrDefault("HICLAW_K8S_WORKER_MEMORY", "2Gi"),
 
-		OrchestratorURL: os.Getenv("HICLAW_ORCHESTRATOR_URL"),
+		ControllerURL: firstNonEmpty(
+			os.Getenv("HICLAW_CONTROLLER_URL"),
+			os.Getenv("HICLAW_ORCHESTRATOR_URL"),
+		),
 	}
 }
 
