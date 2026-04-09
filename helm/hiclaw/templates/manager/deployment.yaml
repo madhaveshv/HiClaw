@@ -28,7 +28,7 @@ spec:
       {{- if eq .Values.objectStorage.type "minio" }}
       initContainers:
         - name: init-minio-bucket
-          image: "minio/mc:latest"
+          image: "higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/mc:20260216"
           imagePullPolicy: IfNotPresent
           command:
             - sh

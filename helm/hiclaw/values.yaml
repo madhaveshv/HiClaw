@@ -60,8 +60,8 @@ objectStorage:
   type: minio
   minio:
     image:
-      repository: minio/minio
-      tag: latest
+      repository: higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/minio
+      tag: "20260216"
       pullPolicy: IfNotPresent
     resources:
       requests:

@@ -139,7 +139,7 @@ if [ "$SKIP_BUILD" = "0" ]; then
     # Pre-load Docker Hub images that Kind nodes may not be able to pull directly
     # (e.g., behind GFW or with unreliable Docker Hub access)
     log "Pre-loading Docker Hub images into kind cluster..."
-    for img in "minio/minio:latest" "minio/mc:latest"; do
+    for img in "higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/minio:20260216" "higress-registry.cn-hangzhou.cr.aliyuncs.com/higress/mc:20260216"; do
         docker pull "$img" 2>/dev/null || log "WARN: failed to pull $img (may already exist locally)"
         kind load docker-image "$img" --name "$CLUSTER_NAME"
     done
