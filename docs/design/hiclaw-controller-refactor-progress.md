@@ -63,7 +63,7 @@
 
 | 项目 | 设计路径 | 实际路径 | 状态 |
 |------|---------|---------|------|
-| Initializer | `internal/orchestrator/initializer.go` | 分散在 `internal/app/app.go` + `internal/service/` | ⚠️ 功能已实现，但未按设计文档独立为 orchestrator 模块 |
+| Initializer | `internal/orchestrator/initializer.go`  | ❌ 未实现 |
 
 ### 1.5 配置版本管理
 
