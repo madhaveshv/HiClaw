@@ -48,6 +48,7 @@ LOCAL_WORKER         = hiclaw/worker-agent:$(VERSION)
 LOCAL_COPAW_WORKER   = hiclaw/copaw-worker:$(VERSION)
 LOCAL_OPENCLAW_BASE  = hiclaw/openclaw-base:$(VERSION)
 LOCAL_CONTROLLER     = hiclaw/hiclaw-controller:$(VERSION)
+LOCAL_MANAGER_K8S    = hiclaw/manager-k8s:$(VERSION)
 LOCAL_EMBEDDED       = hiclaw/hiclaw-embedded:$(VERSION)
 
 # Higress base image registry (regional mirrors auto-synced from cn-hangzhou primary)
@@ -99,13 +100,13 @@ LINES          ?= 50
 
 # ---------- Phony targets ----------
 
-.PHONY: all build build-openclaw-base build-hiclaw-controller build-embedded build-manager build-manager-aliyun build-manager-copaw build-worker build-copaw-worker \
+.PHONY: all build build-openclaw-base build-hiclaw-controller build-embedded build-manager build-manager-k8s build-manager-aliyun build-manager-copaw build-worker build-copaw-worker \
         tag push push-openclaw-base push-hiclaw-controller push-manager push-manager-aliyun push-manager-copaw push-worker push-copaw-worker \
         push-native push-native-manager push-native-manager-copaw push-native-worker push-native-copaw-worker \
         buildx-setup \
-        test test-quick test-installed \
-        install uninstall replay replay-log \
-        verify \
+        test test-quick test-installed test-embedded \
+        install install-embedded uninstall uninstall-embedded replay replay-log \
+        verify wait-ready wait-ready-embedded \
         status logs \
         mirror-images clean help
 
@@ -142,6 +143,14 @@ build-manager: build-hiclaw-controller ## Build Manager image (OpenClaw runtime)
 		--build-arg HICLAW_CONTROLLER_IMAGE=$(LOCAL_CONTROLLER) \
 		-t $(LOCAL_MANAGER) \
 		./manager/
+
+build-manager-k8s: build-hiclaw-controller ## Build slim Manager image for K8s/embedded mode (no infrastructure)
+	@echo "==> Building Manager K8s image: $(LOCAL_MANAGER_K8S) (registry: $(HIGRESS_REGISTRY))"
+	docker build $(PLATFORM_FLAG) $(REGISTRY_ARG) $(BUILTIN_VERSION_ARG) $(OPENCLAW_BASE_BUILD_ARG) $(SHARED_LIB_CTX) $(DOCKER_BUILD_ARGS) \
+		--build-arg HICLAW_CONTROLLER_IMAGE=$(LOCAL_CONTROLLER) \
+		-f manager/Dockerfile.k8s \
+		-t $(LOCAL_MANAGER_K8S) \
+		.
 
 build-manager-aliyun: ## Build Manager Aliyun image
 	@echo "==> Building Manager Aliyun image: $(LOCAL_MANAGER_ALIYUN) (registry: $(HIGRESS_REGISTRY))"
@@ -544,6 +553,68 @@ uninstall: ## Stop and remove Manager + all Worker containers
 		fi; \
 	fi
 	@echo "==> HiClaw uninstalled"
+
+# ---------- Embedded Install / Uninstall / Test ----------
+
+install-embedded: ## Install in embedded mode (dual-container: controller + agent)
+ifndef SKIP_BUILD
+	$(MAKE) build-embedded build-manager-k8s build-worker build-copaw-worker
+endif
+	@echo "==> Installing HiClaw (embedded mode)..."
+	HICLAW_NON_INTERACTIVE=1 \
+		HICLAW_EMBEDDED_IMAGE=$(LOCAL_EMBEDDED) \
+		HICLAW_MANAGER_IMAGE=$(LOCAL_MANAGER_K8S) \
+		HICLAW_WORKER_IMAGE=$(LOCAL_WORKER) \
+		HICLAW_COPAW_WORKER_IMAGE=$(LOCAL_COPAW_WORKER) \
+		HICLAW_MATRIX_E2EE=0 \
+		bash ./install/hiclaw-install-embedded.sh
+
+wait-ready-embedded: ## Wait for embedded-mode services to be ready
+	@echo "==> Waiting for embedded services..."
+	@TIMEOUT=300; ELAPSED=0; \
+	while [ "$$ELAPSED" -lt "$$TIMEOUT" ]; do \
+		RESULT=$$(docker exec hiclaw-manager bash -c 'curl -s -o /dev/null -w "%{http_code} " "http://127.0.0.1:6167/_matrix/client/versions" 2>/dev/null || echo "000 "; curl -s -o /dev/null -w "%{http_code} " "http://127.0.0.1:9000/minio/health/live" 2>/dev/null || echo "000 "; curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8001/" 2>/dev/null || echo "000"' 2>/dev/null); \
+		MATRIX=$$(echo "$$RESULT" | tr -d '\n' | cut -d' ' -f1); \
+		MINIO=$$(echo "$$RESULT" | tr -d '\n' | cut -d' ' -f2); \
+		CONSOLE=$$(echo "$$RESULT" | tr -d '\n' | cut -d' ' -f3); \
+		AGENT=$$(docker ps --format '{{.Names}}' 2>/dev/null | grep -c '^hiclaw-manager-default$$' || echo 0); \
+		if [ "$$MATRIX" = "200" ] && [ "$$MINIO" = "200" ] && [ "$$CONSOLE" = "200" ] && [ "$$AGENT" -ge 1 ]; then \
+			echo "==> All services ready (took $${ELAPSED}s)"; \
+			echo "==> Waiting 60s for Manager Agent initialization..."; \
+			sleep 60; \
+			echo "==> Manager Agent should be ready now"; \
+			exit 0; \
+		fi; \
+		sleep 5; \
+		ELAPSED=$$((ELAPSED + 5)); \
+		echo "    Still waiting... ($${ELAPSED}s) Matrix=$$MATRIX MinIO=$$MINIO Console=$$CONSOLE Agent=$$AGENT"; \
+	done; \
+	echo "ERROR: Embedded services did not become ready within $${TIMEOUT}s"; \
+	exit 1
+
+test-embedded: ## Run integration tests in embedded mode
+ifdef SKIP_INSTALL
+	@echo "==> Running tests against existing embedded installation"
+	@docker exec hiclaw-manager-default touch /root/manager-workspace/yolo-mode 2>/dev/null || true
+	./tests/run-all-tests.sh --skip-build --use-existing $(if $(TEST_FILTER),--test-filter "$(TEST_FILTER)")
+else
+	@echo "==> Installing embedded mode and running tests"
+	$(MAKE) uninstall-embedded 2>/dev/null || true
+	HICLAW_YOLO=1 $(MAKE) install-embedded
+	$(MAKE) wait-ready-embedded
+	./tests/run-all-tests.sh --skip-build --use-existing $(if $(TEST_FILTER),--test-filter "$(TEST_FILTER)")
+endif
+
+uninstall-embedded: ## Stop and remove embedded containers
+	@echo "==> Uninstalling HiClaw (embedded mode)..."
+	-docker stop hiclaw-manager-default 2>/dev/null && docker rm hiclaw-manager-default 2>/dev/null || true
+	-docker stop hiclaw-manager 2>/dev/null && docker rm hiclaw-manager 2>/dev/null || true
+	@for c in $$(docker ps -a --filter "name=hiclaw-worker-" --format '{{.Names}}' 2>/dev/null); do \
+		echo "  Removing Worker: $$c"; \
+		docker rm -f "$$c" 2>/dev/null || true; \
+	done
+	-docker volume rm hiclaw-data 2>/dev/null && echo "  Removed volume: hiclaw-data" || true
+	@echo "==> HiClaw (embedded) uninstalled"
 
 # ---------- Replay ----------
 
