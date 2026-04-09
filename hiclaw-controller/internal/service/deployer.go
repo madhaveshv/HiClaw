@@ -239,6 +239,76 @@ func (d *Deployer) CleanupOSSData(ctx context.Context, workerName string) error 
 	return d.oss.DeletePrefix(ctx, agentPrefix)
 }
 
+// --- Manager Config Deployment ---
+
+// ManagerDeployRequest describes a Manager config deployment (create or update).
+type ManagerDeployRequest struct {
+	Name           string
+	Spec           v1beta1.ManagerSpec
+	MatrixToken    string
+	GatewayKey     string
+	MatrixPassword string
+	AuthorizedMCPs []string
+	IsUpdate       bool
+}
+
+// DeployManagerConfig generates and pushes Manager configuration files to OSS.
+// Unlike Worker, AGENTS.md and builtin skills are managed by the Manager container
+// itself (via upgrade-builtins.sh), so we only push runtime-generated files.
+func (d *Deployer) DeployManagerConfig(ctx context.Context, req ManagerDeployRequest) error {
+	logger := log.FromContext(ctx)
+	agentPrefix := fmt.Sprintf("agents/%s", req.Name)
+
+	// --- openclaw.json ---
+	configJSON, err := d.agentConfig.GenerateOpenClawConfig(agentconfig.WorkerConfigRequest{
+		WorkerName:  req.Name,
+		MatrixToken: req.MatrixToken,
+		GatewayKey:  req.GatewayKey,
+		ModelName:   req.Spec.Model,
+	})
+	if err != nil {
+		return fmt.Errorf("config generation failed: %w", err)
+	}
+	if err := d.oss.PutObject(ctx, agentPrefix+"/openclaw.json", configJSON); err != nil {
+		return fmt.Errorf("config push to storage failed: %w", err)
+	}
+
+	// --- SOUL.md (only if explicitly set in CRD spec) ---
+	if req.Spec.Soul != "" {
+		if err := d.oss.PutObject(ctx, agentPrefix+"/SOUL.md", []byte(req.Spec.Soul)); err != nil {
+			logger.Error(err, "SOUL.md push failed (non-fatal)")
+		}
+	}
+
+	// --- AGENTS.md (only if explicitly set in CRD spec) ---
+	if req.Spec.Agents != "" {
+		if err := d.oss.PutObject(ctx, agentPrefix+"/AGENTS.md", []byte(req.Spec.Agents)); err != nil {
+			logger.Error(err, "AGENTS.md push failed (non-fatal)")
+		}
+	}
+
+	// --- mcporter-servers.json ---
+	if len(req.AuthorizedMCPs) > 0 {
+		mcporterJSON, err := d.agentConfig.GenerateMcporterConfig(req.GatewayKey, "", req.AuthorizedMCPs)
+		if err != nil {
+			logger.Error(err, "mcporter config generation failed (non-fatal)")
+		} else if mcporterJSON != nil {
+			if err := d.oss.PutObject(ctx, agentPrefix+"/mcporter-servers.json", mcporterJSON); err != nil {
+				logger.Error(err, "mcporter config push failed (non-fatal)")
+			}
+		}
+	}
+
+	// --- Matrix password for E2EE re-login ---
+	if req.MatrixPassword != "" {
+		if err := d.oss.PutObject(ctx, agentPrefix+"/credentials/matrix/password", []byte(req.MatrixPassword)); err != nil {
+			logger.Error(err, "failed to write Matrix password to storage (non-fatal)")
+		}
+	}
+
+	return nil
+}
+
 // --- Internal helpers ---
 
 // prepareAndPushAgentsMD merges the builtin AGENTS.md section and injects

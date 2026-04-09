@@ -387,3 +387,156 @@ func (p *Provisioner) ProvisionTeamRooms(ctx context.Context, req TeamRoomReques
 func (p *Provisioner) DeleteCredentials(ctx context.Context, workerName string) error {
 	return p.creds.Delete(ctx, workerName)
 }
+
+// --- Manager Provisioning ---
+
+// ManagerProvisionRequest describes the infrastructure to provision for a Manager.
+type ManagerProvisionRequest struct {
+	Name       string
+	McpServers []string
+}
+
+// ManagerProvisionResult contains all outputs from a successful Manager provision.
+type ManagerProvisionResult struct {
+	MatrixUserID   string
+	MatrixToken    string
+	RoomID         string
+	GatewayKey     string
+	MinIOPassword  string
+	MatrixPassword string
+	AuthorizedMCPs []string
+}
+
+// ProvisionManager executes the full infrastructure setup for a Manager Agent:
+// credentials, Matrix account, MinIO user, Admin DM room, Gateway consumer.
+func (p *Provisioner) ProvisionManager(ctx context.Context, req ManagerProvisionRequest) (*ManagerProvisionResult, error) {
+	logger := log.FromContext(ctx)
+	managerName := req.Name
+	consumerName := "manager"
+	managerMatrixID := p.matrix.UserID(managerName)
+	adminMatrixID := p.matrix.UserID(p.adminUser)
+
+	// Step 1: Load or generate credentials
+	creds, err := p.creds.Load(ctx, managerName)
+	if err != nil {
+		return nil, fmt.Errorf("load credentials: %w", err)
+	}
+	if creds == nil {
+		creds, err = GenerateCredentials()
+		if err != nil {
+			return nil, fmt.Errorf("generate credentials: %w", err)
+		}
+		if err := p.creds.Save(ctx, managerName, creds); err != nil {
+			return nil, fmt.Errorf("save credentials: %w", err)
+		}
+	}
+
+	// Step 2: Register Matrix account
+	logger.Info("registering Manager Matrix account", "name", managerName)
+	userCreds, err := p.matrix.EnsureUser(ctx, matrix.EnsureUserRequest{
+		Username: managerName,
+		Password: creds.MatrixPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Matrix registration failed: %w", err)
+	}
+	creds.MatrixPassword = userCreds.Password
+
+	// Step 3: Create MinIO user (embedded mode only)
+	if p.ossAdmin != nil {
+		logger.Info("creating MinIO user for Manager", "name", managerName)
+		if err := p.ossAdmin.EnsureUser(ctx, managerName, creds.MinIOPassword); err != nil {
+			return nil, fmt.Errorf("MinIO user creation failed: %w", err)
+		}
+		if err := p.ossAdmin.EnsurePolicy(ctx, oss.PolicyRequest{
+			WorkerName: managerName,
+		}); err != nil {
+			return nil, fmt.Errorf("MinIO policy creation failed: %w", err)
+		}
+	}
+
+	// Step 4: Create Admin DM Room (Admin + Manager only)
+	logger.Info("creating Manager Admin DM room", "name", managerName)
+	powerLevels := map[string]int{
+		adminMatrixID:   100,
+		managerMatrixID: 100,
+	}
+	roomInfo, err := p.matrix.CreateRoom(ctx, matrix.CreateRoomRequest{
+		Name:           fmt.Sprintf("Manager: %s", managerName),
+		Topic:          fmt.Sprintf("Admin DM channel for Manager %s", managerName),
+		Invite:         []string{adminMatrixID, managerMatrixID},
+		PowerLevels:    powerLevels,
+		ExistingRoomID: creds.RoomID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Admin DM room creation failed: %w", err)
+	}
+	creds.RoomID = roomInfo.RoomID
+	logger.Info("Manager Admin DM room ready", "roomID", creds.RoomID, "created", roomInfo.Created)
+
+	if err := p.creds.Save(ctx, managerName, creds); err != nil {
+		logger.Error(err, "failed to persist credentials (non-fatal)")
+	}
+
+	// Step 5: Gateway consumer and authorization
+	logger.Info("creating gateway consumer for Manager", "consumer", consumerName)
+	consumerResult, err := p.gateway.EnsureConsumer(ctx, gateway.ConsumerRequest{
+		Name:          consumerName,
+		CredentialKey: creds.GatewayKey,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gateway consumer creation failed: %w", err)
+	}
+	if consumerResult.APIKey != "" && consumerResult.APIKey != creds.GatewayKey {
+		creds.GatewayKey = consumerResult.APIKey
+		_ = p.creds.Save(ctx, managerName, creds)
+	}
+
+	if err := p.gateway.AuthorizeAIRoutes(ctx, consumerName); err != nil {
+		return nil, fmt.Errorf("AI route authorization failed: %w", err)
+	}
+
+	var authorizedMCPs []string
+	if len(req.McpServers) > 0 {
+		authorizedMCPs, err = p.gateway.AuthorizeMCPServers(ctx, consumerName, req.McpServers)
+		if err != nil {
+			logger.Error(err, "MCP authorization partial failure (non-fatal)")
+		}
+	}
+
+	return &ManagerProvisionResult{
+		MatrixUserID:   managerMatrixID,
+		MatrixToken:    userCreds.AccessToken,
+		RoomID:         creds.RoomID,
+		GatewayKey:     creds.GatewayKey,
+		MinIOPassword:  creds.MinIOPassword,
+		MatrixPassword: creds.MatrixPassword,
+		AuthorizedMCPs: authorizedMCPs,
+	}, nil
+}
+
+// DeprovisionManager cleans up infrastructure for a deleted Manager.
+func (p *Provisioner) DeprovisionManager(ctx context.Context, name string, mcpServers []string) error {
+	logger := log.FromContext(ctx)
+	consumerName := "manager"
+
+	if err := p.gateway.DeauthorizeAIRoutes(ctx, consumerName); err != nil {
+		logger.Error(err, "failed to deauthorize AI routes (non-fatal)")
+	}
+	if len(mcpServers) > 0 {
+		if err := p.gateway.DeauthorizeMCPServers(ctx, consumerName, mcpServers); err != nil {
+			logger.Error(err, "failed to deauthorize MCP servers (non-fatal)")
+		}
+	}
+	if err := p.gateway.DeleteConsumer(ctx, consumerName); err != nil {
+		logger.Error(err, "failed to delete gateway consumer (non-fatal)")
+	}
+
+	if p.ossAdmin != nil {
+		if err := p.ossAdmin.DeleteUser(ctx, name); err != nil {
+			logger.Error(err, "failed to delete MinIO user (non-fatal)")
+		}
+	}
+
+	return nil
+}

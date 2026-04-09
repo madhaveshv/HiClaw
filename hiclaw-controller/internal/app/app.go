@@ -260,6 +260,16 @@ func (a *App) initReconcilers(_ context.Context) error {
 		return fmt.Errorf("setup HumanReconciler: %w", err)
 	}
 
+	if err := (&controller.ManagerReconciler{
+		Client:      a.mgr.GetClient(),
+		Provisioner: a.provisioner,
+		Deployer:    a.deployer,
+		Backend:     a.registry,
+		EnvBuilder:  a.envBuilder,
+	}).SetupWithManager(a.mgr); err != nil {
+		return fmt.Errorf("setup ManagerReconciler: %w", err)
+	}
+
 	return nil
 }
 
