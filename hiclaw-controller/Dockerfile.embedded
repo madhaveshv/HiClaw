@@ -73,6 +73,10 @@ COPY manager/scripts/init/start-mc-mirror.sh /opt/hiclaw/scripts/init/start-mc-m
 COPY manager/scripts/lib/ /opt/hiclaw/scripts/lib/
 RUN chmod +x /opt/hiclaw/scripts/init/*.sh
 
+# Agent templates (builtin AGENTS.md, skills for worker and team-leader)
+COPY manager/agent/worker-agent/ /opt/hiclaw/agent/worker-agent/
+COPY manager/agent/team-leader-agent/ /opt/hiclaw/agent/team-leader-agent/
+
 # ---- Ports ----
 # 8080: Higress Gateway (unified entry point)
 # 8001: Higress Console

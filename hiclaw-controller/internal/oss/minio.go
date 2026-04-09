@@ -109,6 +109,14 @@ func (c *MinIOClient) Mirror(ctx context.Context, src, dst string, opts MirrorOp
 	if err := c.ensureAlias(ctx); err != nil {
 		return err
 	}
+	// Apply storage prefix to paths that are not local (don't start with /).
+	// This makes Mirror consistent with PutObject/GetObject which auto-prefix keys.
+	if !strings.HasPrefix(src, "/") {
+		src = c.fullPath(src)
+	}
+	if !strings.HasPrefix(dst, "/") {
+		dst = c.fullPath(dst)
+	}
 	args := []string{"mirror", src, dst}
 	if opts.Overwrite {
 		args = append(args, "--overwrite")

@@ -121,6 +121,15 @@ func (d *Deployer) WriteInlineConfigs(name string, spec v1beta1.WorkerSpec) erro
 func (d *Deployer) DeployWorkerConfig(ctx context.Context, req WorkerDeployRequest) error {
 	logger := log.FromContext(ctx)
 	agentPrefix := fmt.Sprintf("agents/%s", req.Name)
+	localAgentDir := fmt.Sprintf("%s/%s", d.agentFSDir, req.Name)
+
+	// --- Sync local agent files to storage FIRST (base layer) ---
+	// Mirror provides the base: package files, memory, custom skills, etc.
+	// All subsequent PutObject calls overwrite on top with authoritative content.
+	logger.Info("syncing agent files to storage", "name", req.Name)
+	if err := d.oss.Mirror(ctx, localAgentDir+"/", agentPrefix+"/", oss.MirrorOptions{Overwrite: true}); err != nil {
+		logger.Error(err, "agent file sync failed (non-fatal)")
+	}
 
 	// --- openclaw.json ---
 	var channelPolicy *agentconfig.ChannelPolicy
@@ -148,12 +157,20 @@ func (d *Deployer) DeployWorkerConfig(ctx context.Context, req WorkerDeployReque
 		return fmt.Errorf("config push to storage failed: %w", err)
 	}
 
-	// --- SOUL.md (create only, or if inline soul is set) ---
-	if !req.IsUpdate || req.Spec.Soul != "" {
-		soulContent := req.Spec.Soul
-		if soulContent == "" {
-			soulContent = fmt.Sprintf("# %s\n\nYou are %s, an AI worker agent.\n", req.Name, req.Name)
+	// --- SOUL.md ---
+	// Always push from local agent dir (authoritative after DeployPackage).
+	// Fall back to inline soul or generated default on create.
+	soulPath := filepath.Join(localAgentDir, "SOUL.md")
+	if soulData, err := os.ReadFile(soulPath); err == nil {
+		if err := d.oss.PutObject(ctx, agentPrefix+"/SOUL.md", soulData); err != nil {
+			logger.Error(err, "SOUL.md push failed (non-fatal)")
 		}
+	} else if req.Spec.Soul != "" {
+		if err := d.oss.PutObject(ctx, agentPrefix+"/SOUL.md", []byte(req.Spec.Soul)); err != nil {
+			logger.Error(err, "SOUL.md push failed (non-fatal)")
+		}
+	} else if !req.IsUpdate {
+		soulContent := fmt.Sprintf("# %s\n\nYou are %s, an AI worker agent.\n", req.Name, req.Name)
 		if err := d.oss.PutObject(ctx, agentPrefix+"/SOUL.md", []byte(soulContent)); err != nil {
 			logger.Error(err, "SOUL.md push failed (non-fatal)")
 		}
@@ -176,13 +193,6 @@ func (d *Deployer) DeployWorkerConfig(ctx context.Context, req WorkerDeployReque
 		if err := d.oss.PutObject(ctx, agentPrefix+"/credentials/matrix/password", []byte(req.MatrixPassword)); err != nil {
 			logger.Error(err, "failed to write Matrix password to storage (non-fatal)")
 		}
-	}
-
-	// --- Sync local agent files to storage ---
-	logger.Info("syncing agent files to storage", "name", req.Name)
-	localAgentDir := fmt.Sprintf("%s/%s", d.agentFSDir, req.Name)
-	if err := d.oss.Mirror(ctx, localAgentDir+"/", agentPrefix+"/", oss.MirrorOptions{Overwrite: true}); err != nil {
-		logger.Error(err, "agent file sync failed (non-fatal)")
 	}
 
 	// --- Builtin top-level files (e.g. HEARTBEAT.md for team leaders) ---
