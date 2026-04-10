@@ -158,6 +158,19 @@ func (r *TeamReconciler) handleCreate(ctx context.Context, t *v1beta1.Team) (rec
 		}
 	}
 
+	// --- Step 6: Legacy teams-registry ---
+	if r.Legacy != nil && r.Legacy.Enabled() {
+		if err := r.Legacy.UpdateTeamsRegistry(service.TeamRegistryEntry{
+			Name:       t.Name,
+			Leader:     t.Spec.Leader.Name,
+			Workers:    workerNames,
+			TeamRoomID: rooms.TeamRoomID,
+			Admin:      teamAdminRegistryEntry(t.Spec.Admin),
+		}); err != nil {
+			logger.Error(err, "teams-registry update failed (non-fatal)")
+		}
+	}
+
 	_ = r.Get(ctx, client.ObjectKeyFromObject(t), t)
 	t.Status.Phase = "Active"
 	t.Status.LeaderReady = true
@@ -297,7 +310,7 @@ func (r *TeamReconciler) handleDelete(ctx context.Context, t *v1beta1.Team) erro
 
 	// Legacy: remove team from teams-registry
 	if r.Legacy != nil {
-		if err := r.Legacy.RemoveTeamFromRegistry(ctx, t.Name); err != nil {
+		if err := r.Legacy.RemoveFromTeamsRegistry(ctx, t.Name); err != nil {
 			logger.Error(err, "failed to remove team from registry (non-fatal)")
 		}
 	}
@@ -307,6 +320,14 @@ func (r *TeamReconciler) handleDelete(ctx context.Context, t *v1beta1.Team) erro
 }
 
 func (r *TeamReconciler) buildLeaderCR(t *v1beta1.Team) *v1beta1.Worker {
+	policy := mergeChannelPolicy(t.Spec.ChannelPolicy, t.Spec.Leader.ChannelPolicy)
+
+	allWorkerNames := make([]string, 0, len(t.Spec.Workers))
+	for _, w := range t.Spec.Workers {
+		allWorkerNames = append(allWorkerNames, w.Name)
+	}
+	policy = appendGroupAllowExtra(policy, allWorkerNames...)
+
 	return &v1beta1.Worker{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      t.Spec.Leader.Name,
@@ -326,7 +347,7 @@ func (r *TeamReconciler) buildLeaderCR(t *v1beta1.Team) *v1beta1.Worker {
 			Soul:          t.Spec.Leader.Soul,
 			Agents:        t.Spec.Leader.Agents,
 			Package:       t.Spec.Leader.Package,
-			ChannelPolicy: t.Spec.Leader.ChannelPolicy,
+			ChannelPolicy: policy,
 		},
 	}
 }
@@ -338,6 +359,18 @@ func (r *TeamReconciler) buildWorkerCR(t *v1beta1.Team, w v1beta1.TeamWorkerSpec
 	}
 	if leaderName != "" {
 		annotations["hiclaw.io/team-leader"] = leaderName
+	}
+
+	policy := mergeChannelPolicy(t.Spec.ChannelPolicy, w.ChannelPolicy)
+	policy = appendGroupAllowExtra(policy, leaderName)
+
+	peerMentions := t.Spec.PeerMentions == nil || *t.Spec.PeerMentions
+	if peerMentions {
+		for _, peer := range t.Spec.Workers {
+			if peer.Name != w.Name {
+				policy = appendGroupAllowExtra(policy, peer.Name)
+			}
+		}
 	}
 
 	return &v1beta1.Worker{
@@ -361,7 +394,7 @@ func (r *TeamReconciler) buildWorkerCR(t *v1beta1.Team, w v1beta1.TeamWorkerSpec
 			McpServers:    w.McpServers,
 			Package:       w.Package,
 			Expose:        w.Expose,
-			ChannelPolicy: w.ChannelPolicy,
+			ChannelPolicy: policy,
 		},
 	}
 }
@@ -441,4 +474,57 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1beta1.Team{}).
 		Complete(r)
+}
+
+// mergeChannelPolicy produces a merged ChannelPolicySpec from a team-wide base
+// and an individual override. Both may be nil.
+func mergeChannelPolicy(teamPolicy, individualPolicy *v1beta1.ChannelPolicySpec) *v1beta1.ChannelPolicySpec {
+	if teamPolicy == nil && individualPolicy == nil {
+		return nil
+	}
+	merged := &v1beta1.ChannelPolicySpec{}
+	if teamPolicy != nil {
+		merged.GroupAllowExtra = append(merged.GroupAllowExtra, teamPolicy.GroupAllowExtra...)
+		merged.GroupDenyExtra = append(merged.GroupDenyExtra, teamPolicy.GroupDenyExtra...)
+		merged.DmAllowExtra = append(merged.DmAllowExtra, teamPolicy.DmAllowExtra...)
+		merged.DmDenyExtra = append(merged.DmDenyExtra, teamPolicy.DmDenyExtra...)
+	}
+	if individualPolicy != nil {
+		merged.GroupAllowExtra = append(merged.GroupAllowExtra, individualPolicy.GroupAllowExtra...)
+		merged.GroupDenyExtra = append(merged.GroupDenyExtra, individualPolicy.GroupDenyExtra...)
+		merged.DmAllowExtra = append(merged.DmAllowExtra, individualPolicy.DmAllowExtra...)
+		merged.DmDenyExtra = append(merged.DmDenyExtra, individualPolicy.DmDenyExtra...)
+	}
+	return merged
+}
+
+// appendGroupAllowExtra adds names to GroupAllowExtra, creating the policy if nil.
+func appendGroupAllowExtra(policy *v1beta1.ChannelPolicySpec, names ...string) *v1beta1.ChannelPolicySpec {
+	if len(names) == 0 {
+		return policy
+	}
+	if policy == nil {
+		policy = &v1beta1.ChannelPolicySpec{}
+	}
+	existing := make(map[string]bool, len(policy.GroupAllowExtra))
+	for _, v := range policy.GroupAllowExtra {
+		existing[v] = true
+	}
+	for _, n := range names {
+		if n != "" && !existing[n] {
+			policy.GroupAllowExtra = append(policy.GroupAllowExtra, n)
+			existing[n] = true
+		}
+	}
+	return policy
+}
+
+func teamAdminRegistryEntry(admin *v1beta1.TeamAdminSpec) *service.TeamAdminEntry {
+	if admin == nil {
+		return nil
+	}
+	return &service.TeamAdminEntry{
+		Name:         admin.Name,
+		MatrixUserID: admin.MatrixUserID,
+	}
 }

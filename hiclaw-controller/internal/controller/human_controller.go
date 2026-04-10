@@ -112,6 +112,19 @@ func (r *HumanReconciler) handleCreate(ctx context.Context, h *v1beta1.Human) (r
 		}
 	}
 
+	// Legacy: update humans-registry
+	if r.Legacy != nil && r.Legacy.Enabled() {
+		if err := r.Legacy.UpdateHumansRegistry(service.HumanRegistryEntry{
+			Name:            h.Name,
+			MatrixUserID:    matrixUserID,
+			DisplayName:     h.Spec.DisplayName,
+			PermissionLevel: h.Spec.PermissionLevel,
+			AccessibleTeams: h.Spec.AccessibleTeams,
+		}); err != nil {
+			logger.Error(err, "humans-registry update failed (non-fatal)")
+		}
+	}
+
 	_ = r.Get(ctx, client.ObjectKeyFromObject(h), h)
 	h.Status.Phase = "Active"
 	h.Status.MatrixUserID = matrixUserID
@@ -136,7 +149,7 @@ func (r *HumanReconciler) handleDelete(ctx context.Context, h *v1beta1.Human) er
 	logger.Info("deleting human", "name", h.Name)
 
 	if r.Legacy != nil {
-		if err := r.Legacy.RemoveHumanFromRegistry(ctx, h.Name); err != nil {
+		if err := r.Legacy.RemoveFromHumansRegistry(ctx, h.Name); err != nil {
 			logger.Error(err, "failed to remove human from registry (non-fatal)")
 		}
 	}

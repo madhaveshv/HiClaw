@@ -90,9 +90,10 @@ else
     log_fail "Human YAML apply failed: ${APPLY_OUTPUT}"
 fi
 
-HUMAN_YAML=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/humans/${TEST_HUMAN}.yaml" 2>/dev/null || echo "")
-assert_not_empty "${HUMAN_YAML}" "Human YAML exists in MinIO hiclaw-config/humans/"
-assert_contains "${HUMAN_YAML}" "kind: Human" "Human YAML has correct kind"
+HUMAN_CR=$(exec_in_agent hiclaw get humans "${TEST_HUMAN}" -o json 2>/dev/null || echo "")
+assert_not_empty "${HUMAN_CR}" "Human CR exists (hiclaw get humans)"
+HUMAN_NAME_CHK=$(echo "${HUMAN_CR}" | jq -r '.name // empty' 2>/dev/null)
+assert_eq "${TEST_HUMAN}" "${HUMAN_NAME_CHK}" "Human CR has correct name"
 
 # Wait for controller reconcile
 log_info "Waiting for controller to reconcile Human..."
@@ -118,7 +119,8 @@ fi
 # ============================================================
 log_section "Verify Human Registration"
 
-HUMAN_ENTRY=$(exec_in_agent jq -r --arg h "${TEST_HUMAN}" '.humans[$h] // empty' /root/manager-workspace/humans-registry.json 2>/dev/null)
+HUMANS_REGISTRY=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/humans-registry.json" 2>/dev/null || echo "{}")
+HUMAN_ENTRY=$(echo "${HUMANS_REGISTRY}" | jq -r --arg h "${TEST_HUMAN}" '.humans[$h] // empty' 2>/dev/null)
 assert_not_empty "${HUMAN_ENTRY}" "Human registered in humans-registry.json"
 
 HUMAN_LEVEL=$(echo "${HUMAN_ENTRY}" | jq -r '.permission_level // empty')
@@ -152,7 +154,7 @@ SOUL
     " 2>/dev/null
 done
 
-exec_in_agent bash -c "cat > /tmp/hiclaw-test-${TEST_TEAM}.yaml << 'YAMLEOF'
+exec_in_agent bash -c "cat > /tmp/hiclaw-test-${TEST_TEAM}.yaml << YAMLEOF
 apiVersion: hiclaw.io/v1beta1
 kind: Team
 metadata:
@@ -160,7 +162,7 @@ metadata:
 spec:
   admin:
     name: ${TEST_HUMAN}
-    matrixUserId: ${HUMAN_MATRIX_ID}
+    matrixUserId: \"${HUMAN_MATRIX_ID}\"
   leader:
     name: ${TEST_LEADER}
     model: qwen3.5-plus
@@ -219,7 +221,8 @@ done
 # ============================================================
 log_section "Verify Team Admin in Registry"
 
-TEAM_ENTRY=$(exec_in_agent jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
+TEAMS_REGISTRY=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/teams-registry.json" 2>/dev/null || echo "{}")
+TEAM_ENTRY=$(echo "${TEAMS_REGISTRY}" | jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' 2>/dev/null)
 assert_not_empty "${TEAM_ENTRY}" "Team registered in teams-registry.json"
 
 TEAM_ADMIN_NAME=$(echo "${TEAM_ENTRY}" | jq -r '.admin.name // empty')
@@ -289,7 +292,7 @@ ADMIN_TOKEN=$(echo "${ADMIN_LOGIN}" | jq -r '.access_token // empty')
 if [ -n "${ADMIN_TOKEN}" ] && [ "${ADMIN_TOKEN}" != "null" ]; then
     ADMIN_MATRIX_ID="@${TEST_ADMIN_USER}:${TEST_MATRIX_DOMAIN}"
     for w in "${TEST_LEADER}" "${TEST_W1}"; do
-        W_ROOM=$(exec_in_agent jq -r --arg w "${w}" '.workers[$w].room_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+        W_ROOM=$(exec_in_agent hiclaw get workers "${w}" -o json 2>/dev/null | jq -r '.roomID // empty')
         if [ -n "${W_ROOM}" ] && [ "${W_ROOM}" != "null" ]; then
             W_ROOM_ENC=$(echo "${W_ROOM}" | sed 's/!/%21/g')
             W_MEMBERS=$(exec_in_manager curl -sf \
@@ -314,12 +317,13 @@ fi
 # ============================================================
 log_section "Verify Containers"
 
+WORKERS_REGISTRY=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/workers-registry.json" 2>/dev/null || echo "{}")
 for w in "${TEST_LEADER}" "${TEST_W1}"; do
     RUNNING=$(docker ps --format '{{.Names}}' 2>/dev/null | grep "hiclaw-worker-${w}" || echo "")
     if [ -n "${RUNNING}" ]; then
         log_pass "Container running: hiclaw-worker-${w}"
     else
-        DEPLOY=$(exec_in_agent jq -r --arg w "${w}" '.workers[$w].deployment // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+        DEPLOY=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${w}" '.workers[$w].deployment // empty' 2>/dev/null)
         if [ "${DEPLOY}" = "remote" ]; then
             log_pass "Agent ${w} registered in remote mode"
         else

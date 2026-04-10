@@ -5,44 +5,51 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
-	"github.com/hiclaw/hiclaw-controller/internal/executor"
+	"github.com/hiclaw/hiclaw-controller/internal/oss"
 )
 
 // LegacyCompat handles backward-compatible operations that only apply in
 // embedded mode: Manager Agent openclaw.json manipulation, workers/teams/humans
-// registry JSON files, and shell-based registry cleanup scripts.
+// registry JSON files.
 //
-// In incluster mode, construct with zero-value paths and nil Executor —
-// Enabled() will return false and all methods become no-ops.
+// All state is persisted to OSS (MinIO) so that the Manager Agent container
+// can access it via mc mirror — this avoids cross-container filesystem issues.
+//
+// In incluster mode, construct with nil OSS — Enabled() will return false
+// and all methods become no-ops.
 type LegacyCompat struct {
-	ManagerConfigPath string          // embedded: ~/openclaw.json
-	RegistryPath      string          // embedded: ~/workers-registry.json
-	Executor          *executor.Shell // for shell-based registry cleanup
-	MatrixDomain      string          // for building Matrix user IDs
+	OSS          oss.StorageClient
+	MatrixDomain string
+	ManagerName  string // Manager agent name, default "manager"
+
+	mu sync.Mutex // serializes read-modify-write cycles on registry files
 }
 
 // LegacyConfig holds configuration for constructing a LegacyCompat.
 type LegacyConfig struct {
-	ManagerConfigPath string
-	RegistryPath      string
-	Executor          *executor.Shell
-	MatrixDomain      string
+	OSS          oss.StorageClient
+	MatrixDomain string
+	ManagerName  string
 }
 
 func NewLegacyCompat(cfg LegacyConfig) *LegacyCompat {
+	managerName := cfg.ManagerName
+	if managerName == "" {
+		managerName = "manager"
+	}
 	return &LegacyCompat{
-		ManagerConfigPath: cfg.ManagerConfigPath,
-		RegistryPath:      cfg.RegistryPath,
-		Executor:          cfg.Executor,
-		MatrixDomain:      cfg.MatrixDomain,
+		OSS:          cfg.OSS,
+		MatrixDomain: cfg.MatrixDomain,
+		ManagerName:  managerName,
 	}
 }
 
-// Enabled reports whether any legacy operations are configured.
+// Enabled reports whether legacy operations are configured.
 func (l *LegacyCompat) Enabled() bool {
-	return l != nil && (l.ManagerConfigPath != "" || l.RegistryPath != "" || l.Executor != nil)
+	return l != nil && l.OSS != nil
 }
 
 // MatrixUserID builds a full Matrix user ID from a localpart username.
@@ -50,21 +57,31 @@ func (l *LegacyCompat) MatrixUserID(name string) string {
 	return fmt.Sprintf("@%s:%s", name, l.MatrixDomain)
 }
 
+func (l *LegacyCompat) managerAgentPrefix() string {
+	return fmt.Sprintf("agents/%s", l.ManagerName)
+}
+
 // --- Manager Config ---
 
-// UpdateManagerGroupAllowFrom adds or removes a worker Matrix ID from the Manager's
-// openclaw.json groupAllowFrom list. No-op if ManagerConfigPath is empty.
+// UpdateManagerGroupAllowFrom adds or removes a worker Matrix ID from the
+// Manager's openclaw.json groupAllowFrom list via OSS.
 func (l *LegacyCompat) UpdateManagerGroupAllowFrom(workerMatrixID string, add bool) error {
-	if l == nil || l.ManagerConfigPath == "" {
+	if !l.Enabled() {
 		return nil
 	}
 
-	data, err := os.ReadFile(l.ManagerConfigPath)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ctx := context.Background()
+	key := l.managerAgentPrefix() + "/openclaw.json"
+
+	data, err := l.OSS.GetObject(ctx, key)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("read manager config: %w", err)
+		return fmt.Errorf("read manager config from OSS: %w", err)
 	}
 
 	var config map[string]interface{}
@@ -106,7 +123,7 @@ func (l *LegacyCompat) UpdateManagerGroupAllowFrom(workerMatrixID string, add bo
 	if err != nil {
 		return fmt.Errorf("marshal manager config: %w", err)
 	}
-	return os.WriteFile(l.ManagerConfigPath, out, 0644)
+	return l.OSS.PutObject(ctx, key, out)
 }
 
 func extractStringSlice(v interface{}) []string {
@@ -151,104 +168,245 @@ type workersRegistry struct {
 	Workers   map[string]WorkerRegistryEntry `json:"workers"`
 }
 
-// UpdateWorkersRegistry upserts a worker entry in workers-registry.json.
-// No-op if RegistryPath is empty.
+// UpdateWorkersRegistry upserts a worker entry in workers-registry.json via OSS.
 func (l *LegacyCompat) UpdateWorkersRegistry(entry WorkerRegistryEntry) error {
-	if l == nil || l.RegistryPath == "" {
+	if !l.Enabled() {
 		return nil
 	}
 
-	reg, err := loadWorkersRegistry(l.RegistryPath)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ctx := context.Background()
+	key := l.managerAgentPrefix() + "/workers-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &workersRegistry{Version: 1, Workers: make(map[string]WorkerRegistryEntry)}
+	})
 	if err != nil {
 		return err
 	}
+	wr := reg.(*workersRegistry)
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	existing, exists := reg.Workers[entry.Name]
+	existing, exists := wr.Workers[entry.Name]
 	if exists && existing.CreatedAt != "" {
 		entry.CreatedAt = existing.CreatedAt
 	} else {
 		entry.CreatedAt = now
 	}
 	entry.SkillsUpdatedAt = now
-	reg.Workers[entry.Name] = entry
-	reg.UpdatedAt = now
+	wr.Workers[entry.Name] = entry
+	wr.UpdatedAt = now
 
-	return saveWorkersRegistry(l.RegistryPath, reg)
+	return l.saveRegistry(ctx, key, wr)
 }
 
-// RemoveFromWorkersRegistry removes a worker entry from workers-registry.json.
-// No-op if RegistryPath is empty.
+// RemoveFromWorkersRegistry removes a worker entry from workers-registry.json via OSS.
 func (l *LegacyCompat) RemoveFromWorkersRegistry(workerName string) error {
-	if l == nil || l.RegistryPath == "" {
+	if !l.Enabled() {
 		return nil
 	}
 
-	reg, err := loadWorkersRegistry(l.RegistryPath)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ctx := context.Background()
+	key := l.managerAgentPrefix() + "/workers-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &workersRegistry{Version: 1, Workers: make(map[string]WorkerRegistryEntry)}
+	})
 	if err != nil {
 		return err
 	}
+	wr := reg.(*workersRegistry)
 
-	delete(reg.Workers, workerName)
-	reg.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	delete(wr.Workers, workerName)
+	wr.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
-	return saveWorkersRegistry(l.RegistryPath, reg)
+	return l.saveRegistry(ctx, key, wr)
 }
 
-func loadWorkersRegistry(path string) (*workersRegistry, error) {
-	data, err := os.ReadFile(path)
+// --- Teams Registry ---
+
+// TeamRegistryEntry describes a team entry in teams-registry.json.
+type TeamRegistryEntry struct {
+	Name       string          `json:"-"`
+	Leader     string          `json:"leader"`
+	Workers    []string        `json:"workers"`
+	TeamRoomID string          `json:"team_room_id"`
+	Admin      *TeamAdminEntry `json:"admin,omitempty"`
+	CreatedAt  string          `json:"created_at,omitempty"`
+}
+
+type TeamAdminEntry struct {
+	Name         string `json:"name"`
+	MatrixUserID string `json:"matrix_user_id"`
+}
+
+type teamsRegistry struct {
+	Version   int                          `json:"version"`
+	UpdatedAt string                       `json:"updated_at"`
+	Teams     map[string]TeamRegistryEntry `json:"teams"`
+}
+
+// UpdateTeamsRegistry upserts a team entry in teams-registry.json via OSS.
+func (l *LegacyCompat) UpdateTeamsRegistry(entry TeamRegistryEntry) error {
+	if !l.Enabled() {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ctx := context.Background()
+	key := l.managerAgentPrefix() + "/teams-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &teamsRegistry{Version: 1, Teams: make(map[string]TeamRegistryEntry)}
+	})
+	if err != nil {
+		return err
+	}
+	tr := reg.(*teamsRegistry)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	existing, exists := tr.Teams[entry.Name]
+	if exists && existing.CreatedAt != "" {
+		entry.CreatedAt = existing.CreatedAt
+	} else {
+		entry.CreatedAt = now
+	}
+	tr.Teams[entry.Name] = entry
+	tr.UpdatedAt = now
+
+	return l.saveRegistry(ctx, key, tr)
+}
+
+// RemoveFromTeamsRegistry removes a team from teams-registry.json via OSS.
+func (l *LegacyCompat) RemoveFromTeamsRegistry(ctx context.Context, teamName string) error {
+	if !l.Enabled() {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	key := l.managerAgentPrefix() + "/teams-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &teamsRegistry{Version: 1, Teams: make(map[string]TeamRegistryEntry)}
+	})
+	if err != nil {
+		return err
+	}
+	tr := reg.(*teamsRegistry)
+
+	delete(tr.Teams, teamName)
+	tr.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	return l.saveRegistry(ctx, key, tr)
+}
+
+// --- Humans Registry ---
+
+// HumanRegistryEntry describes a human entry in humans-registry.json.
+type HumanRegistryEntry struct {
+	Name            string   `json:"-"`
+	MatrixUserID    string   `json:"matrix_user_id"`
+	DisplayName     string   `json:"display_name"`
+	PermissionLevel int      `json:"permission_level"`
+	AccessibleTeams []string `json:"accessible_teams,omitempty"`
+	CreatedAt       string   `json:"created_at,omitempty"`
+}
+
+type humansRegistry struct {
+	Version   int                           `json:"version"`
+	UpdatedAt string                        `json:"updated_at"`
+	Humans    map[string]HumanRegistryEntry `json:"humans"`
+}
+
+// UpdateHumansRegistry upserts a human entry in humans-registry.json via OSS.
+func (l *LegacyCompat) UpdateHumansRegistry(entry HumanRegistryEntry) error {
+	if !l.Enabled() {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	ctx := context.Background()
+	key := l.managerAgentPrefix() + "/humans-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &humansRegistry{Version: 1, Humans: make(map[string]HumanRegistryEntry)}
+	})
+	if err != nil {
+		return err
+	}
+	hr := reg.(*humansRegistry)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	existing, exists := hr.Humans[entry.Name]
+	if exists && existing.CreatedAt != "" {
+		entry.CreatedAt = existing.CreatedAt
+	} else {
+		entry.CreatedAt = now
+	}
+	hr.Humans[entry.Name] = entry
+	hr.UpdatedAt = now
+
+	return l.saveRegistry(ctx, key, hr)
+}
+
+// RemoveFromHumansRegistry removes a human from humans-registry.json via OSS.
+func (l *LegacyCompat) RemoveFromHumansRegistry(ctx context.Context, humanName string) error {
+	if !l.Enabled() {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	key := l.managerAgentPrefix() + "/humans-registry.json"
+
+	reg, err := l.loadRegistry(ctx, key, func() interface{} {
+		return &humansRegistry{Version: 1, Humans: make(map[string]HumanRegistryEntry)}
+	})
+	if err != nil {
+		return err
+	}
+	hr := reg.(*humansRegistry)
+
+	delete(hr.Humans, humanName)
+	hr.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+
+	return l.saveRegistry(ctx, key, hr)
+}
+
+// --- Generic OSS registry helpers ---
+
+func (l *LegacyCompat) loadRegistry(ctx context.Context, key string, empty func() interface{}) (interface{}, error) {
+	data, err := l.OSS.GetObject(ctx, key)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return &workersRegistry{
-				Version: 1,
-				Workers: make(map[string]WorkerRegistryEntry),
-			}, nil
+			return empty(), nil
 		}
-		return nil, fmt.Errorf("read workers registry: %w", err)
+		return nil, fmt.Errorf("read registry %s: %w", key, err)
 	}
 
-	var reg workersRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("parse workers registry: %w", err)
+	result := empty()
+	if err := json.Unmarshal(data, result); err != nil {
+		return nil, fmt.Errorf("parse registry %s: %w", key, err)
 	}
-	if reg.Workers == nil {
-		reg.Workers = make(map[string]WorkerRegistryEntry)
-	}
-	return &reg, nil
+	return result, nil
 }
 
-func saveWorkersRegistry(path string, reg *workersRegistry) error {
-	data, err := json.MarshalIndent(reg, "", "  ")
+func (l *LegacyCompat) saveRegistry(ctx context.Context, key string, v interface{}) error {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal workers registry: %w", err)
+		return fmt.Errorf("marshal registry: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
-}
-
-// --- Shell-based registry cleanup ---
-
-// RemoveTeamFromRegistry removes a team from the teams registry via shell script.
-// No-op if Executor is nil.
-func (l *LegacyCompat) RemoveTeamFromRegistry(ctx context.Context, teamName string) error {
-	if l == nil || l.Executor == nil {
-		return nil
-	}
-	_, err := l.Executor.RunSimple(ctx,
-		"/opt/hiclaw/agent/skills/team-management/scripts/manage-teams-registry.sh",
-		"--action", "remove", "--team-name", teamName,
-	)
-	return err
-}
-
-// RemoveHumanFromRegistry removes a human from the humans registry via shell script.
-// No-op if Executor is nil.
-func (l *LegacyCompat) RemoveHumanFromRegistry(ctx context.Context, humanName string) error {
-	if l == nil || l.Executor == nil {
-		return nil
-	}
-	_, err := l.Executor.RunSimple(ctx,
-		"/opt/hiclaw/agent/skills/human-management/scripts/manage-humans-registry.sh",
-		"--action", "remove", "--name", humanName,
-	)
-	return err
+	return l.OSS.PutObject(ctx, key, data)
 }

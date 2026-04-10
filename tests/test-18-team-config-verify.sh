@@ -164,7 +164,8 @@ done
 # ============================================================
 log_section "Verify teams-registry.json"
 
-TEAM_ENTRY=$(exec_in_agent jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
+TEAMS_REGISTRY=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/teams-registry.json" 2>/dev/null || echo "{}")
+TEAM_ENTRY=$(echo "${TEAMS_REGISTRY}" | jq -r --arg t "${TEST_TEAM}" '.teams[$t] // empty' 2>/dev/null)
 assert_not_empty "${TEAM_ENTRY}" "Team registered in teams-registry.json"
 
 TEAM_LEADER_REG=$(echo "${TEAM_ENTRY}" | jq -r '.leader // empty')
@@ -200,19 +201,21 @@ fi
 # ============================================================
 log_section "Verify Worker Roles in Registry"
 
-LEADER_ROLE=$(exec_in_agent jq -r --arg w "${TEST_LEADER}" '.workers[$w].role // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+WORKERS_REGISTRY=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/workers-registry.json" 2>/dev/null || echo "{}")
+
+LEADER_ROLE=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${TEST_LEADER}" '.workers[$w].role // empty' 2>/dev/null)
 assert_eq "team_leader" "${LEADER_ROLE}" "Leader has role=team_leader"
 
-LEADER_TEAM=$(exec_in_agent jq -r --arg w "${TEST_LEADER}" '.workers[$w].team_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+LEADER_TEAM=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${TEST_LEADER}" '.workers[$w].team_id // empty' 2>/dev/null)
 assert_eq "${TEST_TEAM}" "${LEADER_TEAM}" "Leader has correct team_id"
 
-W1_ROLE=$(exec_in_agent jq -r --arg w "${TEST_W1}" '.workers[$w].role // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+W1_ROLE=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${TEST_W1}" '.workers[$w].role // empty' 2>/dev/null)
 assert_eq "worker" "${W1_ROLE}" "Worker 1 has role=worker"
 
-W1_TEAM=$(exec_in_agent jq -r --arg w "${TEST_W1}" '.workers[$w].team_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+W1_TEAM=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${TEST_W1}" '.workers[$w].team_id // empty' 2>/dev/null)
 assert_eq "${TEST_TEAM}" "${W1_TEAM}" "Worker 1 has correct team_id"
 
-W2_ROLE=$(exec_in_agent jq -r --arg w "${TEST_W2}" '.workers[$w].role // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+W2_ROLE=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${TEST_W2}" '.workers[$w].role // empty' 2>/dev/null)
 assert_eq "worker" "${W2_ROLE}" "Worker 2 has role=worker"
 
 # ============================================================
@@ -342,7 +345,7 @@ else
 fi
 
 # Manager: should have Leader but NOT team workers
-MGR_GAF=$(exec_in_agent jq -r '.channels.matrix.groupAllowFrom[]' /root/manager-workspace/openclaw.json 2>/dev/null)
+MGR_GAF=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/openclaw.json" 2>/dev/null | jq -r '.channels.matrix.groupAllowFrom[]' 2>/dev/null)
 if echo "${MGR_GAF}" | grep -q "@${TEST_LEADER}:"; then
     log_pass "Manager groupAllowFrom includes Leader"
 else
@@ -383,7 +386,7 @@ done
 # ============================================================
 log_section "Verify Agent Count"
 
-TEAM_AGENT_COUNT=$(exec_in_agent jq -r --arg t "${TEST_TEAM}" '[.workers | to_entries[] | select(.value.team_id == $t)] | length' /root/manager-workspace/workers-registry.json 2>/dev/null)
+TEAM_AGENT_COUNT=$(echo "${WORKERS_REGISTRY}" | jq -r --arg t "${TEST_TEAM}" '[.workers | to_entries[] | select(.value.team_id == $t)] | length' 2>/dev/null)
 assert_eq "3" "${TEAM_AGENT_COUNT}" "Team has 3 agents total (1 leader + 2 workers)"
 
 # ============================================================
@@ -394,7 +397,7 @@ log_section "Verify Admin Auto-Joined Worker Rooms"
 if [ -n "${ADMIN_TOKEN}" ] && [ "${ADMIN_TOKEN}" != "null" ]; then
     ADMIN_MATRIX_ID="@${TEST_ADMIN_USER}:${TEST_MATRIX_DOMAIN}"
     for w in "${TEST_LEADER}" "${TEST_W1}" "${TEST_W2}"; do
-        W_ROOM=$(exec_in_agent jq -r --arg w "${w}" '.workers[$w].room_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+        W_ROOM=$(exec_in_agent hiclaw get workers "${w}" -o json 2>/dev/null | jq -r '.roomID // empty')
         if [ -n "${W_ROOM}" ] && [ "${W_ROOM}" != "null" ]; then
             W_ROOM_ENC=$(echo "${W_ROOM}" | sed 's/!/%21/g')
             W_MEMBERS=$(exec_in_manager curl -sf \
@@ -424,7 +427,7 @@ for w in "${TEST_LEADER}" "${TEST_W1}" "${TEST_W2}"; do
     if [ -n "${RUNNING}" ]; then
         log_pass "Container running: hiclaw-worker-${w}"
     else
-        DEPLOY=$(exec_in_agent jq -r --arg w "${w}" '.workers[$w].deployment // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+        DEPLOY=$(echo "${WORKERS_REGISTRY}" | jq -r --arg w "${w}" '.workers[$w].deployment // empty' 2>/dev/null)
         if [ "${DEPLOY}" = "remote" ]; then
             log_pass "Agent ${w} registered in remote mode"
         else

@@ -247,10 +247,8 @@ func (a *App) initServiceLayer(_ context.Context) error {
 
 	if cfg.KubeMode == "embedded" {
 		a.legacy = service.NewLegacyCompat(service.LegacyConfig{
-			ManagerConfigPath: cfg.ManagerConfigPath(),
-			RegistryPath:      cfg.RegistryPath(),
-			Executor:          a.shell,
-			MatrixDomain:      cfg.MatrixDomain,
+			OSS:          a.oss,
+			MatrixDomain: cfg.MatrixDomain,
 		})
 	}
 

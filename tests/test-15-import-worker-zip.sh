@@ -155,14 +155,14 @@ else
 fi
 
 # ============================================================
-# Section 4: Verify YAML + ZIP in MinIO
+# Section 4: Verify CRD + ZIP in MinIO
 # ============================================================
-log_section "Verify MinIO State"
+log_section "Verify Resource State"
 
-YAML_CONTENT=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/workers/${TEST_WORKER}.yaml" 2>/dev/null || echo "")
-assert_not_empty "${YAML_CONTENT}" "YAML file exists in MinIO hiclaw-config/workers/"
-assert_contains "${YAML_CONTENT}" "kind: Worker" "YAML contains kind: Worker"
-assert_contains "${YAML_CONTENT}" "name: ${TEST_WORKER}" "YAML contains correct name"
+WORKER_JSON=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>/dev/null || echo "")
+assert_not_empty "${WORKER_JSON}" "Worker CR exists (hiclaw get workers)"
+WORKER_NAME_CHK=$(echo "${WORKER_JSON}" | jq -r '.name // empty' 2>/dev/null)
+assert_eq "${TEST_WORKER}" "${WORKER_NAME_CHK}" "Worker CR has correct name"
 
 PKG_EXISTS=$(exec_in_manager bash -c "mc ls '${STORAGE_PREFIX}/hiclaw-config/packages/${TEST_WORKER}.zip' >/dev/null 2>&1 && echo yes || echo no")
 if [ "${PKG_EXISTS}" = "yes" ]; then
@@ -220,21 +220,22 @@ else
     exec_in_manager cat /var/log/hiclaw/hiclaw-controller-error.log 2>/dev/null | grep "${TEST_WORKER}" | tail -5
 fi
 
-# Verify file watcher detected the change
-SYNC_LOG=$(exec_in_manager cat /var/log/hiclaw/hiclaw-controller-error.log 2>/dev/null | grep "syncing resource.*${TEST_WORKER}" || echo "")
-assert_not_empty "${SYNC_LOG}" "File watcher detected and synced resource"
+# Verify controller log confirms reconciliation completed
+RECONCILE_LOG=$(exec_in_manager cat /var/log/hiclaw/hiclaw-controller-error.log 2>/dev/null | grep "worker created.*${TEST_WORKER}" || echo "")
+assert_not_empty "${RECONCILE_LOG}" "Controller logged worker creation"
 
 # ============================================================
 # Section 8: Verify Worker infrastructure
 # ============================================================
 log_section "Verify Worker Infrastructure"
 
-# workers-registry.json
-REGISTRY_ENTRY=$(exec_in_agent jq -r --arg w "${TEST_WORKER}" '.workers[$w] // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+# workers-registry.json (in MinIO, written by controller)
+REGISTRY_JSON=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/workers-registry.json" 2>/dev/null || echo "{}")
+REGISTRY_ENTRY=$(echo "${REGISTRY_JSON}" | jq -r --arg w "${TEST_WORKER}" '.workers[$w] // empty' 2>/dev/null)
 assert_not_empty "${REGISTRY_ENTRY}" "Worker registered in workers-registry.json"
 
-# Matrix Room
-ROOM_ID=$(echo "${REGISTRY_ENTRY}" | jq -r '.room_id // empty' 2>/dev/null)
+# Matrix Room (from CRD status)
+ROOM_ID=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>/dev/null | jq -r '.roomID // empty')
 assert_not_empty "${ROOM_ID}" "Matrix Room created: ${ROOM_ID}"
 
 # openclaw.json in MinIO
@@ -367,11 +368,13 @@ else
 fi
 
 sleep 2
-YAML_AFTER=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/workers/${TEST_WORKER}.yaml" 2>/dev/null || echo "")
-if [ -z "${YAML_AFTER}" ]; then
-    log_pass "YAML removed from MinIO after delete"
+WORKER_AFTER=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>&1 || echo "")
+if echo "${WORKER_AFTER}" | grep -q "not found\|error\|Error"; then
+    log_pass "Worker CR removed after delete"
+elif [ -z "${WORKER_AFTER}" ]; then
+    log_pass "Worker CR removed after delete"
 else
-    log_fail "YAML still exists after delete"
+    log_fail "Worker CR still exists after delete"
 fi
 
 # ============================================================

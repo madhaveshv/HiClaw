@@ -121,23 +121,14 @@ else
 fi
 
 # ============================================================
-# Section 4: Verify YAML in MinIO
+# Section 4: Verify CRD created
 # ============================================================
-log_section "Verify MinIO State"
+log_section "Verify Resource State"
 
-YAML_CONTENT=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/workers/${TEST_WORKER}.yaml" 2>/dev/null || echo "")
-assert_not_empty "${YAML_CONTENT}" "YAML file exists in MinIO hiclaw-config/workers/"
-assert_contains "${YAML_CONTENT}" "kind: Worker" "YAML contains kind: Worker"
-assert_contains "${YAML_CONTENT}" "name: ${TEST_WORKER}" "YAML contains correct name"
-assert_contains "${YAML_CONTENT}" "soul:" "YAML contains soul field"
-assert_contains "${YAML_CONTENT}" "agents:" "YAML contains agents field"
-
-# No package field should be present
-if echo "${YAML_CONTENT}" | grep -q "package:"; then
-    log_fail "YAML should not contain package field"
-else
-    log_pass "YAML correctly has no package field (inline only)"
-fi
+WORKER_JSON=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>/dev/null || echo "")
+assert_not_empty "${WORKER_JSON}" "Worker CR exists (hiclaw get workers)"
+WORKER_NAME_CHK=$(echo "${WORKER_JSON}" | jq -r '.name // empty' 2>/dev/null)
+assert_eq "${TEST_WORKER}" "${WORKER_NAME_CHK}" "Worker CR has correct name"
 
 # ============================================================
 # Section 5: Wait for controller reconcile + Worker creation
@@ -195,12 +186,13 @@ assert_contains "${AGENTS_IN_MINIO}" "hiclaw-builtin-end" "AGENTS.md has builtin
 # ============================================================
 log_section "Verify Worker Infrastructure"
 
-# workers-registry.json
-REGISTRY_ENTRY=$(exec_in_agent jq -r --arg w "${TEST_WORKER}" '.workers[$w] // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+# workers-registry.json (in MinIO, written by controller)
+REGISTRY_JSON=$(exec_in_manager mc cat "${STORAGE_PREFIX}/agents/manager/workers-registry.json" 2>/dev/null || echo "{}")
+REGISTRY_ENTRY=$(echo "${REGISTRY_JSON}" | jq -r --arg w "${TEST_WORKER}" '.workers[$w] // empty' 2>/dev/null)
 assert_not_empty "${REGISTRY_ENTRY}" "Worker registered in workers-registry.json"
 
-# Matrix Room
-ROOM_ID=$(echo "${REGISTRY_ENTRY}" | jq -r '.room_id // empty' 2>/dev/null)
+# Matrix Room (from CRD status)
+ROOM_ID=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>/dev/null | jq -r '.roomID // empty')
 assert_not_empty "${ROOM_ID}" "Matrix Room created: ${ROOM_ID}"
 
 # openclaw.json in MinIO
@@ -237,11 +229,13 @@ else
 fi
 
 sleep 2
-YAML_AFTER=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/workers/${TEST_WORKER}.yaml" 2>/dev/null || echo "")
-if [ -z "${YAML_AFTER}" ]; then
-    log_pass "YAML removed from MinIO after delete"
+WORKER_AFTER=$(exec_in_agent hiclaw get workers "${TEST_WORKER}" -o json 2>&1 || echo "")
+if echo "${WORKER_AFTER}" | grep -q "not found\|error\|Error"; then
+    log_pass "Worker CR removed after delete"
+elif [ -z "${WORKER_AFTER}" ]; then
+    log_pass "Worker CR removed after delete"
 else
-    log_fail "YAML still exists after delete"
+    log_fail "Worker CR still exists after delete"
 fi
 
 # ============================================================
@@ -303,9 +297,10 @@ else
     log_fail "ZIP import failed for override test"
 fi
 
-# Now get the generated YAML, read the package URI, and create a new YAML with inline overrides
-PKG_URI=$(exec_in_manager mc cat "${STORAGE_PREFIX}/hiclaw-config/workers/${TEST_WORKER_OVERRIDE}.yaml" 2>/dev/null | grep "package:" | sed 's/.*package: //')
-assert_not_empty "${PKG_URI}" "Package URI extracted from generated YAML"
+# Discover the package URI from MinIO packages directory
+PKG_FILE=$(exec_in_manager bash -c "mc ls '${STORAGE_PREFIX}/hiclaw-config/packages/' 2>/dev/null | grep '${TEST_WORKER_OVERRIDE}' | awk '{print \$NF}'" | head -1)
+PKG_URI="oss://hiclaw-config/packages/${PKG_FILE}"
+assert_not_empty "${PKG_FILE}" "Package file found in MinIO"
 
 # Overwrite the YAML with package + inline soul/agents
 OVERRIDE_SOUL="# OVERRIDDEN SOUL FROM INLINE
