@@ -68,28 +68,43 @@ done
 log_pass "SOUL.md files prepared for all team members"
 
 # ============================================================
-# Section 2: Create Team
+# Section 2: Create Team (via hiclaw CLI → controller REST API)
 # ============================================================
 log_section "Create Team"
 
-CREATE_OUTPUT=$(exec_in_manager bash -c "
-    bash /opt/hiclaw/agent/skills/team-management/scripts/create-team.sh \
-        --name '${TEST_TEAM}' --leader '${TEST_LEADER}' --workers '${TEST_W1},${TEST_W2}'
-" 2>&1)
+CREATE_OUTPUT=$(exec_in_manager hiclaw create team \
+    --name "${TEST_TEAM}" \
+    --leader-name "${TEST_LEADER}" \
+    --workers "${TEST_W1},${TEST_W2}" 2>&1)
 
-if echo "${CREATE_OUTPUT}" | grep -q "RESULT"; then
-    log_pass "create-team.sh completed"
+if echo "${CREATE_OUTPUT}" | grep -q "team/${TEST_TEAM} created"; then
+    log_pass "hiclaw create team completed"
 else
-    log_fail "create-team.sh failed"
+    log_fail "hiclaw create team failed"
     echo "${CREATE_OUTPUT}" | tail -20
 fi
 
-# Extract room IDs from registry
-LEADER_ROOM=$(exec_in_agent jq -r --arg w "${TEST_LEADER}" '.workers[$w].room_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
-LEADER_DM=$(exec_in_agent jq -r --arg t "${TEST_TEAM}" '.teams[$t].leader_dm_room_id // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
-TEAM_ROOM=$(exec_in_agent jq -r --arg t "${TEST_TEAM}" '.teams[$t].team_room_id // empty' /root/manager-workspace/teams-registry.json 2>/dev/null)
-W1_ROOM=$(exec_in_agent jq -r --arg w "${TEST_W1}" '.workers[$w].room_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
-W2_ROOM=$(exec_in_agent jq -r --arg w "${TEST_W2}" '.workers[$w].room_id // empty' /root/manager-workspace/workers-registry.json 2>/dev/null)
+# Wait for TeamReconciler to finish (async reconcile)
+log_info "Waiting for team to become Active..."
+for i in $(seq 1 24); do
+    PHASE=$(exec_in_manager hiclaw get teams "${TEST_TEAM}" -o json 2>/dev/null | jq -r '.phase // empty')
+    [ "${PHASE}" = "Active" ] && break
+    sleep 5
+done
+if [ "${PHASE}" = "Active" ]; then
+    log_pass "Team is Active"
+else
+    log_fail "Team did not become Active within 120s (phase: ${PHASE})"
+fi
+
+# Extract room IDs from controller REST API
+TEAM_JSON=$(exec_in_manager hiclaw get teams "${TEST_TEAM}" -o json 2>/dev/null)
+TEAM_ROOM=$(echo "${TEAM_JSON}" | jq -r '.teamRoomID // empty')
+LEADER_DM=$(echo "${TEAM_JSON}" | jq -r '.leaderDMRoomID // empty')
+
+LEADER_ROOM=$(exec_in_manager hiclaw get workers "${TEST_LEADER}" -o json 2>/dev/null | jq -r '.roomID // empty')
+W1_ROOM=$(exec_in_manager hiclaw get workers "${TEST_W1}" -o json 2>/dev/null | jq -r '.roomID // empty')
+W2_ROOM=$(exec_in_manager hiclaw get workers "${TEST_W2}" -o json 2>/dev/null | jq -r '.roomID // empty')
 
 log_info "Leader Room: ${LEADER_ROOM}"
 log_info "Leader DM: ${LEADER_DM}"

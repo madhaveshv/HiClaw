@@ -407,4 +407,3 @@ func roleForAnnotations(role, teamLeaderName string) string {
 	}
 	return "standalone"
 }
-

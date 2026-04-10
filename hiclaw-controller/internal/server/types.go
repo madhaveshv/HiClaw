@@ -124,6 +124,7 @@ type TeamResponse struct {
 	LeaderHeartbeat    *v1beta1.TeamLeaderHeartbeatSpec `json:"leaderHeartbeat,omitempty"`
 	WorkerIdleTimeout  string                           `json:"workerIdleTimeout,omitempty"`
 	TeamRoomID         string                           `json:"teamRoomID,omitempty"`
+	LeaderDMRoomID     string                           `json:"leaderDMRoomID,omitempty"`
 	LeaderReady        bool                             `json:"leaderReady"`
 	ReadyWorkers       int                              `json:"readyWorkers"`
 	TotalWorkers       int                              `json:"totalWorkers"`

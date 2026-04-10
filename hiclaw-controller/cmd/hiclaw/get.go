@@ -313,6 +313,7 @@ type teamResp struct {
 	LeaderHeartbeat   *teamHeartbeatResp `json:"leaderHeartbeat,omitempty"`
 	WorkerIdleTimeout string             `json:"workerIdleTimeout,omitempty"`
 	TeamRoomID        string             `json:"teamRoomID,omitempty"`
+	LeaderDMRoomID    string             `json:"leaderDMRoomID,omitempty"`
 	LeaderReady       bool               `json:"leaderReady"`
 	ReadyWorkers      int                `json:"readyWorkers"`
 	TotalWorkers      int                `json:"totalWorkers"`
@@ -394,6 +395,7 @@ func teamDetail(t teamResp) []KeyValue {
 		{"Workers", strings.Join(t.WorkerNames, ", ")},
 		{"ReadyWorkers", fmt.Sprintf("%d/%d", t.ReadyWorkers, t.TotalWorkers)},
 		{"TeamRoomID", t.TeamRoomID},
+		{"LeaderDMRoomID", t.LeaderDMRoomID},
 		{"Message", t.Message},
 	}
 }

@@ -677,6 +677,7 @@ func teamToResponse(t *v1beta1.Team) TeamResponse {
 		LeaderHeartbeat:   t.Spec.Leader.Heartbeat,
 		WorkerIdleTimeout: t.Spec.Leader.WorkerIdleTimeout,
 		TeamRoomID:        t.Status.TeamRoomID,
+		LeaderDMRoomID:    t.Status.LeaderDMRoomID,
 		LeaderReady:       t.Status.LeaderReady,
 		ReadyWorkers:      t.Status.ReadyWorkers,
 		TotalWorkers:      t.Status.TotalWorkers,
