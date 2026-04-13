@@ -17,6 +17,7 @@ type CreateWorkerRequest struct {
 	Package       string                     `json:"package,omitempty"`
 	Expose        []v1beta1.ExposePort       `json:"expose,omitempty"`
 	ChannelPolicy *v1beta1.ChannelPolicySpec `json:"channelPolicy,omitempty"`
+	State         *string                    `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 
 	// Team context (set by Team handler or CLI)
 	Team       string `json:"team,omitempty"`
@@ -36,11 +37,13 @@ type UpdateWorkerRequest struct {
 	Package       string                     `json:"package,omitempty"`
 	Expose        []v1beta1.ExposePort       `json:"expose,omitempty"`
 	ChannelPolicy *v1beta1.ChannelPolicySpec `json:"channelPolicy,omitempty"`
+	State         *string                    `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 }
 
 type WorkerResponse struct {
 	Name           string            `json:"name"`
 	Phase          string            `json:"phase"`
+	State          string            `json:"state,omitempty"` // desired lifecycle state
 	Model          string            `json:"model,omitempty"`
 	Runtime        string            `json:"runtime,omitempty"`
 	Image          string            `json:"image,omitempty"`

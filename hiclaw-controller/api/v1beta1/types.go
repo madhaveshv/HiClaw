@@ -32,6 +32,19 @@ type WorkerSpec struct {
 	Package       string             `json:"package,omitempty"` // file://, http(s)://, or nacos:// URI
 	Expose        []ExposePort       `json:"expose,omitempty"`  // ports to expose via Higress gateway
 	ChannelPolicy *ChannelPolicySpec `json:"channelPolicy,omitempty"`
+
+	// State is the desired lifecycle state of the worker.
+	// Valid values: "Running" (default), "Sleeping", "Stopped".
+	// The controller reconciles actual backend state toward this desired state.
+	State *string `json:"state,omitempty"`
+}
+
+// DesiredState returns the effective desired state, defaulting to "Running".
+func (s WorkerSpec) DesiredState() string {
+	if s.State != nil && *s.State != "" {
+		return *s.State
+	}
+	return "Running"
 }
 
 // ExposePort defines a container port to expose via the Higress gateway.

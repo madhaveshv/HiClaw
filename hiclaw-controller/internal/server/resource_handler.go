@@ -52,6 +52,7 @@ func (h *ResourceHandler) CreateWorker(w http.ResponseWriter, r *http.Request) {
 			Package:       req.Package,
 			Expose:        req.Expose,
 			ChannelPolicy: req.ChannelPolicy,
+			State:         req.State,
 		},
 	}
 
@@ -179,6 +180,9 @@ func (h *ResourceHandler) UpdateWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ChannelPolicy != nil {
 		worker.Spec.ChannelPolicy = req.ChannelPolicy
+	}
+	if req.State != nil {
+		worker.Spec.State = req.State
 	}
 
 	if err := h.client.Update(r.Context(), &worker); err != nil {
@@ -647,6 +651,7 @@ func workerToResponse(w *v1beta1.Worker) WorkerResponse {
 	resp := WorkerResponse{
 		Name:           w.Name,
 		Phase:          w.Status.Phase,
+		State:          w.Spec.DesiredState(),
 		Model:          w.Spec.Model,
 		Runtime:        w.Spec.Runtime,
 		Image:          w.Spec.Image,
