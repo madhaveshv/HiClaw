@@ -123,6 +123,7 @@ type LeaderSpec struct {
 	Heartbeat         *TeamLeaderHeartbeatSpec `json:"heartbeat,omitempty"`
 	WorkerIdleTimeout string                   `json:"workerIdleTimeout,omitempty"`
 	ChannelPolicy     *ChannelPolicySpec       `json:"channelPolicy,omitempty"`
+	State             *string                  `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 }
 
 type TeamLeaderHeartbeatSpec struct {
@@ -143,6 +144,7 @@ type TeamWorkerSpec struct {
 	Package       string             `json:"package,omitempty"`
 	Expose        []ExposePort       `json:"expose,omitempty"`
 	ChannelPolicy *ChannelPolicySpec `json:"channelPolicy,omitempty"`
+	State         *string            `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 }
 
 type TeamStatus struct {

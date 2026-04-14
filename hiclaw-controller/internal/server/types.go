@@ -88,6 +88,7 @@ type TeamLeaderRequest struct {
 	Heartbeat         *TeamLeaderHeartbeatRequest `json:"heartbeat,omitempty"`
 	WorkerIdleTimeout string                      `json:"workerIdleTimeout,omitempty"`
 	ChannelPolicy     *v1beta1.ChannelPolicySpec  `json:"channelPolicy,omitempty"`
+	State             *string                     `json:"state,omitempty"` // desired lifecycle state for leader
 }
 
 type TeamLeaderHeartbeatRequest struct {
@@ -108,6 +109,7 @@ type TeamWorkerRequest struct {
 	Package       string                     `json:"package,omitempty"`
 	Expose        []v1beta1.ExposePort       `json:"expose,omitempty"`
 	ChannelPolicy *v1beta1.ChannelPolicySpec `json:"channelPolicy,omitempty"`
+	State         *string                    `json:"state,omitempty"` // desired lifecycle state for worker
 }
 
 type UpdateTeamRequest struct {

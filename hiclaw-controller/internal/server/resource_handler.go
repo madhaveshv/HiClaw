@@ -248,6 +248,7 @@ func (h *ResourceHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 				Heartbeat:         toHeartbeatSpec(req.Leader.Heartbeat),
 				WorkerIdleTimeout: req.Leader.WorkerIdleTimeout,
 				ChannelPolicy:     req.Leader.ChannelPolicy,
+				State:             req.Leader.State,
 			},
 		},
 	}
@@ -266,6 +267,7 @@ func (h *ResourceHandler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 			Package:       tw.Package,
 			Expose:        tw.Expose,
 			ChannelPolicy: tw.ChannelPolicy,
+			State:         tw.State,
 		})
 	}
 
@@ -363,6 +365,9 @@ func (h *ResourceHandler) UpdateTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.Leader.ChannelPolicy != nil {
 			team.Spec.Leader.ChannelPolicy = req.Leader.ChannelPolicy
+		}
+		if req.Leader.State != nil {
+			team.Spec.Leader.State = req.Leader.State
 		}
 	}
 	if req.Workers != nil {
