@@ -181,6 +181,7 @@ type CreateManagerRequest struct {
 	McpServers []string               `json:"mcpServers,omitempty"`
 	Package    string                 `json:"package,omitempty"`
 	Config     *v1beta1.ManagerConfig `json:"config,omitempty"`
+	State      *string                `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 }
 
 type UpdateManagerRequest struct {
@@ -193,11 +194,13 @@ type UpdateManagerRequest struct {
 	McpServers []string               `json:"mcpServers,omitempty"`
 	Package    string                 `json:"package,omitempty"`
 	Config     *v1beta1.ManagerConfig `json:"config,omitempty"`
+	State      *string                `json:"state,omitempty"` // desired lifecycle state: Running, Sleeping, Stopped
 }
 
 type ManagerResponse struct {
 	Name         string `json:"name"`
 	Phase        string `json:"phase"`
+	State        string `json:"state,omitempty"` // desired lifecycle state
 	Model        string `json:"model,omitempty"`
 	Runtime      string `json:"runtime,omitempty"`
 	Image        string `json:"image,omitempty"`

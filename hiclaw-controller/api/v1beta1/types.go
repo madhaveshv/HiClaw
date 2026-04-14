@@ -224,6 +224,19 @@ type ManagerSpec struct {
 	McpServers []string      `json:"mcpServers,omitempty"` // MCP servers to authorize via Gateway
 	Package    string        `json:"package,omitempty"`    // file://, http(s)://, or nacos:// URI
 	Config     ManagerConfig `json:"config,omitempty"`
+
+	// State is the desired lifecycle state of the manager.
+	// Valid values: "Running" (default), "Sleeping", "Stopped".
+	// The controller reconciles actual backend state toward this desired state.
+	State *string `json:"state,omitempty"`
+}
+
+// DesiredState returns the effective desired state, defaulting to "Running".
+func (s ManagerSpec) DesiredState() string {
+	if s.State != nil && *s.State != "" {
+		return *s.State
+	}
+	return "Running"
 }
 
 type ManagerConfig struct {

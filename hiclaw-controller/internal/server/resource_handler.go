@@ -527,6 +527,7 @@ func (h *ResourceHandler) CreateManager(w http.ResponseWriter, r *http.Request) 
 			Skills:     req.Skills,
 			McpServers: req.McpServers,
 			Package:    req.Package,
+			State:      req.State,
 		},
 	}
 	if req.Config != nil {
@@ -617,6 +618,9 @@ func (h *ResourceHandler) UpdateManager(w http.ResponseWriter, r *http.Request) 
 	}
 	if req.Config != nil {
 		mgr.Spec.Config = *req.Config
+	}
+	if req.State != nil {
+		mgr.Spec.State = req.State
 	}
 
 	if err := h.client.Update(r.Context(), &mgr); err != nil {
@@ -726,6 +730,7 @@ func managerToResponse(m *v1beta1.Manager) ManagerResponse {
 	resp := ManagerResponse{
 		Name:         m.Name,
 		Phase:        m.Status.Phase,
+		State:        m.Spec.DesiredState(),
 		Model:        m.Spec.Model,
 		Runtime:      m.Spec.Runtime,
 		Image:        m.Spec.Image,
