@@ -196,6 +196,56 @@ func TestK8sCreateConflict(t *testing.T) {
 	}
 }
 
+// TestK8sCreateResolvesImageFromRuntime verifies that the K8s backend selects
+// the correct image and runtime label based on req.Runtime, with empty values
+// falling back to the configured DefaultRuntime (HICLAW_DEFAULT_WORKER_RUNTIME).
+func TestK8sCreateResolvesImageFromRuntime(t *testing.T) {
+	cases := []struct {
+		name           string
+		runtime        string
+		defaultRuntime string
+		wantImage      string
+		wantLabel      string
+	}{
+		{"explicit_copaw", RuntimeCopaw, "", "hiclaw/copaw-worker:latest", RuntimeCopaw},
+		{"explicit_hermes", RuntimeHermes, "", "hiclaw/hermes-worker:latest", RuntimeHermes},
+		{"empty_no_default", "", "", "hiclaw/worker-agent:latest", RuntimeOpenClaw},
+		{"empty_default_hermes", "", RuntimeHermes, "hiclaw/hermes-worker:latest", RuntimeHermes},
+		{"empty_default_copaw", "", RuntimeCopaw, "hiclaw/copaw-worker:latest", RuntimeCopaw},
+		{"explicit_overrides_default", RuntimeOpenClaw, RuntimeHermes, "hiclaw/worker-agent:latest", RuntimeOpenClaw},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newFakeK8sCoreClient()
+			b := NewK8sBackendWithClient(client, K8sConfig{
+				Namespace:         "hiclaw",
+				WorkerImage:       "hiclaw/worker-agent:latest",
+				CopawWorkerImage:  "hiclaw/copaw-worker:latest",
+				HermesWorkerImage: "hiclaw/hermes-worker:latest",
+				WorkerCPU:         "1000m",
+				WorkerMemory:      "2Gi",
+				DefaultRuntime:    tc.defaultRuntime,
+			}, "hiclaw-worker-")
+
+			if _, err := b.Create(context.Background(), CreateRequest{Name: "x", Runtime: tc.runtime}); err != nil {
+				t.Fatalf("Create failed: %v", err)
+			}
+
+			pod, err := b.client.Pods("hiclaw").Get(context.Background(), "hiclaw-worker-x", metav1.GetOptions{})
+			if err != nil {
+				t.Fatalf("expected worker pod to exist: %v", err)
+			}
+			if got := pod.Spec.Containers[0].Image; got != tc.wantImage {
+				t.Fatalf("pod image = %q, want %q", got, tc.wantImage)
+			}
+			if got := pod.Labels["hiclaw.io/runtime"]; got != tc.wantLabel {
+				t.Fatalf("pod runtime label = %q, want %q", got, tc.wantLabel)
+			}
+		})
+	}
+}
+
 func TestK8sStatus(t *testing.T) {
 	b := newTestK8sBackend(&corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

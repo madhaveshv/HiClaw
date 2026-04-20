@@ -21,7 +21,7 @@ spec:
                   description: LLM model ID (e.g. qwen3.5-plus, claude-sonnet-4-6)
                 runtime:
                   type: string
-                  enum: [openclaw, copaw]
+                  enum: [openclaw, copaw, hermes]
                   default: openclaw
                 image:
                   type: string

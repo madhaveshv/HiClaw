@@ -27,12 +27,31 @@ const (
 const (
 	RuntimeOpenClaw = "openclaw"
 	RuntimeCopaw    = "copaw"
+	RuntimeHermes   = "hermes"
 )
 
 // ValidRuntime reports whether r is a recognized runtime value.
 // An empty string is valid — backends resolve it to the default image.
 func ValidRuntime(r string) bool {
-	return r == "" || r == RuntimeOpenClaw || r == RuntimeCopaw
+	return r == "" || r == RuntimeOpenClaw || r == RuntimeCopaw || r == RuntimeHermes
+}
+
+// ResolveRuntime returns the effective runtime for a backend request.
+// Resolution order:
+//  1. The explicit runtime on the request (req.Runtime).
+//  2. The backend's configured default (HICLAW_DEFAULT_WORKER_RUNTIME).
+//  3. RuntimeOpenClaw — the historical default.
+//
+// Backends call this once at the top of Create() so downstream image/working-
+// dir/label resolution can rely on a non-empty, normalized runtime value.
+func ResolveRuntime(reqRuntime, backendDefault string) string {
+	if reqRuntime != "" {
+		return reqRuntime
+	}
+	if backendDefault != "" {
+		return backendDefault
+	}
+	return RuntimeOpenClaw
 }
 
 // ResourceRequirements specifies CPU/memory requests and limits for a container.
@@ -65,7 +84,7 @@ type CreateRequest struct {
 	Name       string            `json:"name"`
 	Image      string            `json:"image,omitempty"`
 	Env        map[string]string `json:"env,omitempty"`
-	Runtime    string            `json:"runtime,omitempty"` // "openclaw" | "copaw"
+	Runtime    string            `json:"runtime,omitempty"` // "openclaw" | "copaw" | "hermes"
 	Network    string            `json:"network,omitempty"`
 	ExtraHosts []string          `json:"extra_hosts,omitempty"`
 	WorkingDir string            `json:"working_dir,omitempty"`

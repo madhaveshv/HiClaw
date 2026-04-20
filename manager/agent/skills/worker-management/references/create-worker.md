@@ -8,9 +8,10 @@ If the admin asks you to import an existing Worker template, search a registry f
 |------------|---------|-------|
 | "copaw", "Python worker", "pip worker", "host worker" | `copaw` | |
 | "local worker", "local mode", "access my local environment", "run on my machine" | `copaw` | `--remote` |
-| "openclaw", "container worker", "docker worker", or none of the above | `openclaw` (default, uses `${HICLAW_DEFAULT_WORKER_RUNTIME}`) | |
+| "hermes", "hermes worker", "hermes-agent" | `hermes` | |
+| "openclaw", "container worker", "docker worker", or none of the above | default (uses `${HICLAW_DEFAULT_WORKER_RUNTIME}`, normally `openclaw`) | |
 
-When in doubt, ask: "Should this be a copaw (Python, ~150MB RAM) worker or an openclaw (Node.js, ~500MB RAM) worker?"
+When in doubt, ask: "Should this be a copaw (Python, ~150MB RAM), openclaw (Node.js, ~500MB RAM), or hermes (Python, ~200MB RAM) worker?"
 
 ## Step 0.5: Receive configuration from AGENTS.md
 
@@ -96,7 +97,7 @@ hiclaw create worker \
   [--model <MODEL_ID>] \
   [--mcp-servers s1,s2] \
   [--skills s1,s2] \
-  [--runtime openclaw|copaw] \
+  [--runtime openclaw|copaw|hermes] \
   -o json
 ```
 
@@ -114,7 +115,7 @@ Escape rules inside the `--soul "..."` string:
 | `--model` | Model ID. If not specified, defaults to `qwen3.5-plus` |
 | `--skills` | Comma-separated built-in skills to assign |
 | `--mcp-servers` | Comma-separated MCP servers to authorize |
-| `--runtime` | Agent runtime: `openclaw` (default) or `copaw` |
+| `--runtime` | Agent runtime: `openclaw` (default), `copaw`, or `hermes` |
 | `-o json` | Output full JSON response from controller |
 
 The controller handles everything: Matrix registration, room creation, Higress consumer, AI/MCP authorization, config generation, MinIO sync, skills push, and container startup.
@@ -146,6 +147,7 @@ This command returns ALL workers with their current status. Look for your Worker
 **Typical creation time**:
 - OpenClaw Worker: 10-30 seconds
 - CoPaw Worker: 15-45 seconds
+- Hermes Worker: 15-45 seconds
 
 **What NOT to do**:
 - ❌ `sleep 30 && hiclaw get worker <name>` — Wastes time

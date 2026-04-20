@@ -242,6 +242,107 @@ func TestDockerCreatePullsImage(t *testing.T) {
 	}
 }
 
+// TestDockerCreateResolvesImageFromRuntime verifies that the backend selects
+// the correct image based on req.Runtime when req.Image is empty, and that an
+// empty req.Runtime resolves to the configured DefaultRuntime fallback (which
+// mirrors HICLAW_DEFAULT_WORKER_RUNTIME).
+func TestDockerCreateResolvesImageFromRuntime(t *testing.T) {
+	cases := []struct {
+		name           string
+		runtime        string
+		defaultRuntime string
+		wantImage      string
+	}{
+		{"explicit_copaw_uses_copaw_image", RuntimeCopaw, "", "hiclaw/copaw-worker:latest"},
+		{"explicit_hermes_uses_hermes_image", RuntimeHermes, "", "hiclaw/hermes-worker:latest"},
+		{"empty_runtime_no_default_uses_openclaw_image", "", "", "hiclaw/worker-agent:latest"},
+		{"empty_runtime_default_hermes_uses_hermes_image", "", RuntimeHermes, "hiclaw/hermes-worker:latest"},
+		{"empty_runtime_default_copaw_uses_copaw_image", "", RuntimeCopaw, "hiclaw/copaw-worker:latest"},
+		{"explicit_runtime_overrides_default", RuntimeOpenClaw, RuntimeHermes, "hiclaw/worker-agent:latest"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			capturedImages := captureCreateImagesServer(t)
+			defer capturedImages.srv.Close()
+
+			b := &DockerBackend{
+				config: DockerConfig{
+					WorkerImage:       "hiclaw/worker-agent:latest",
+					CopawWorkerImage:  "hiclaw/copaw-worker:latest",
+					HermesWorkerImage: "hiclaw/hermes-worker:latest",
+					DefaultNetwork:    "hiclaw-net",
+					DefaultRuntime:    tc.defaultRuntime,
+				},
+				containerPrefix: "hiclaw-worker-",
+				client: &http.Client{
+					Transport: &testTransport{serverURL: capturedImages.srv.URL},
+				},
+			}
+
+			_, err := b.Create(context.Background(), CreateRequest{
+				Name:    "x",
+				Runtime: tc.runtime,
+			})
+			if err != nil {
+				t.Fatalf("Create failed: %v", err)
+			}
+			if got := capturedImages.lastImage(); got != tc.wantImage {
+				t.Fatalf("create body Image = %q, want %q", got, tc.wantImage)
+			}
+		})
+	}
+}
+
+// captureCreateImagesServer is a minimal Docker mock that records the Image
+// field of every POST /containers/create request. Other endpoints return the
+// minimum responses required to make DockerBackend.Create succeed.
+type capturedCreateBodies struct {
+	srv    *httptest.Server
+	images []string
+}
+
+func (c *capturedCreateBodies) lastImage() string {
+	if len(c.images) == 0 {
+		return ""
+	}
+	return c.images[len(c.images)-1]
+}
+
+func captureCreateImagesServer(t *testing.T) *capturedCreateBodies {
+	t.Helper()
+	captured := &capturedCreateBodies{}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /images/", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"Id": "sha256-x"})
+	})
+	mux.HandleFunc("POST /containers/create", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if img, ok := body["Image"].(string); ok {
+			captured.images = append(captured.images, img)
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"Id": "sha256-test"})
+	})
+	mux.HandleFunc("POST /containers/{id}/start", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /containers/{id}/json", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"Id":    "sha256-test",
+			"State": map[string]interface{}{"Status": "running"},
+		})
+	})
+	mux.HandleFunc("DELETE /containers/{id}", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	captured.srv = httptest.NewServer(mux)
+	return captured
+}
+
 func TestDockerStatus(t *testing.T) {
 	srv := mockDockerAPI(t)
 	defer srv.Close()
