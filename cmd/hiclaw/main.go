@@ -81,6 +81,7 @@ func run(ctx context.Context, logger *zap.Logger, _ kubernetes.Interface, cfg *C
 	)
 
 	// TODO: register CRD controllers and start the manager
+	// TODO: wire up leader election once I figure out the lease namespace
 	<-ctx.Done()
 	logger.Info("Shutdown signal received, stopping controllers")
 	return nil
@@ -94,8 +95,20 @@ func buildKubeClient(kubeconfig string) (kubernetes.Interface, error) {
 
 	if kubeconfig != "" {
 		restCfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, fmt.Errorf("building config from kubeconfig: %w", err)
+		}
 	} else {
+		// Fall back to in-cluster config when no kubeconfig is provided.
 		restCfg, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("building in-cluster config: %w", err)
+		}
 	}
+
+	client, err := kubernetes.NewForConfig(restCfg)
 	if err != nil {
-		return nil, fmt.Erro
+		return nil, fmt.Errorf("creating kubernetes client: %w", err)
+	}
+	return client, nil
+}
