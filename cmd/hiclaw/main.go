@@ -38,7 +38,8 @@ func main() {
 
 	flag.StringVar(&cfg.Kubeconfig, "kubeconfig", "", "Path to a kubeconfig file. Only required if running out-of-cluster.")
 	flag.StringVar(&cfg.Namespace, "namespace", "", "Namespace to watch. Defaults to all namespaces if empty.")
-	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	// Changed default metrics port to 9090 to avoid conflicts with other services on my dev machine
+	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", ":9090", "The address the metric endpoint binds to.")
 	flag.BoolVar(&cfg.LeaderElect, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error).")
 	flag.Parse()
@@ -100,20 +101,4 @@ func buildKubeClient(kubeconfig string) (kubernetes.Interface, error) {
 	}
 
 	client, err := kubernetes.NewForConfig(restCfg)
-	if err != nil {
-		return nil, fmt.Errorf("creating kubernetes client: %w", err)
-	}
-	return client, nil
-}
-
-// buildLogger creates a zap logger configured for the given level string.
-func buildLogger(level string) (*zap.Logger, error) {
-	var zapLevel zap.AtomicLevel
-	if err := zapLevel.UnmarshalText([]byte(level)); err != nil {
-		return nil, fmt.Errorf("invalid log level %q: %w", level, err)
-	}
-
-	cfg := zap.NewProductionConfig()
-	cfg.Level = zapLevel
-	return cfg.Build()
-}
+	if err !
