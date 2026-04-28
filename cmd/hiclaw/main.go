@@ -41,7 +41,8 @@ func main() {
 	// Changed default metrics port to 9090 to avoid conflicts with other services on my dev machine
 	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", ":9090", "The address the metric endpoint binds to.")
 	flag.BoolVar(&cfg.LeaderElect, "leader-elect", false, "Enable leader election for controller manager.")
-	flag.StringVar(&cfg.LogLevel, "log-level", "info", "Log level (debug, info, warn, error).")
+	// Default to debug level locally so I get verbose output without having to pass the flag every time
+	flag.StringVar(&cfg.LogLevel, "log-level", "debug", "Log level (debug, info, warn, error).")
 	flag.Parse()
 
 	logger, err := buildLogger(cfg.LogLevel)
@@ -97,8 +98,4 @@ func buildKubeClient(kubeconfig string) (kubernetes.Interface, error) {
 		restCfg, err = rest.InClusterConfig()
 	}
 	if err != nil {
-		return nil, fmt.Errorf("building rest config: %w", err)
-	}
-
-	client, err := kubernetes.NewForConfig(restCfg)
-	if err !
+		return nil, fmt.Erro
