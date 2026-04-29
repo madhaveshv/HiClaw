@@ -82,6 +82,7 @@ func run(ctx context.Context, logger *zap.Logger, _ kubernetes.Interface, cfg *C
 
 	// TODO: register CRD controllers and start the manager
 	// TODO: wire up leader election once I figure out the lease namespace
+	// TODO: add a healthz/readyz HTTP endpoint alongside the metrics server
 	<-ctx.Done()
 	logger.Info("Shutdown signal received, stopping controllers")
 	return nil
@@ -90,23 +91,28 @@ func run(ctx context.Context, logger *zap.Logger, _ kubernetes.Interface, cfg *C
 // buildKubeClient constructs a Kubernetes client from either an in-cluster
 // config or a provided kubeconfig path.
 // If kubeconfig is empty, falls back to the KUBECONFIG env var before
-// attempting in-cluster config — handy when running locally against a remote
-// cluster without having to pass --kubeconfig every time.
+// attempting in-cluster config — handy when running locally with a
+// kubeconfig already set in the environment.
 func buildKubeClient(kubeconfig string) (kubernetes.Interface, error) {
+	var cfg *rest.Config
+	var err error
+
 	if kubeconfig == "" {
 		kubeconfig = os.Getenv("KUBECONFIG")
 	}
 
-	var (cfg *rest.Config
-		err error
-	)
 	if kubeconfig != "" {
 		cfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 	} else {
 		cfg, err = rest.InClusterConfig()
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("building kube config: %w", err)
 	}
-	return kubernetes.NewForConfig(cfg)
+
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("creating kube client: %w", err)
+	}
+	return client, nil
 }
