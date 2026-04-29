@@ -89,26 +89,16 @@ func run(ctx context.Context, logger *zap.Logger, _ kubernetes.Interface, cfg *C
 
 // buildKubeClient constructs a Kubernetes client from either an in-cluster
 // config or a provided kubeconfig path.
+// If kubeconfig is empty, falls back to the KUBECONFIG env var before
+// attempting in-cluster config — handy when running locally via `go run`.
 func buildKubeClient(kubeconfig string) (kubernetes.Interface, error) {
 	var restCfg *rest.Config
 	var err error
 
-	if kubeconfig != "" {
-		restCfg, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			return nil, fmt.Errorf("building config from kubeconfig: %w", err)
-		}
-	} else {
-		// Fall back to in-cluster config when no kubeconfig is provided.
-		restCfg, err = rest.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("building in-cluster config: %w", err)
-		}
+	// Also check KUBECONFIG env var as a fallback so I don't have to pass
+	// --kubeconfig every time during local development.
+	if kubeconfig == "" {
+		kubeconfig = os.Getenv("KUBECONFIG")
 	}
 
-	client, err := kubernetes.NewForConfig(restCfg)
-	if err != nil {
-		return nil, fmt.Errorf("creating kubernetes client: %w", err)
-	}
-	return client, nil
-}
+	if 
