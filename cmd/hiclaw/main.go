@@ -84,11 +84,14 @@ func run(ctx context.Context, logger *zap.Logger, _ kubernetes.Interface, cfg *C
 	// TODO: wire up leader election once I figure out the lease namespace
 	// TODO: add a healthz/readyz HTTP endpoint alongside the metrics server
 	// TODO: look into whether we need a separate goroutine for metrics vs controller
+	// NOTE: printing namespace here is handy when I forget which cluster context is active
+	if cfg.Namespace == "" {
+		logger.Info("No namespace specified, watching all namespaces")
+	}
 	<-ctx.Done()
 	logger.Info("Shutdown signal received, stopping controllers")
 	return nil
 }
 
 // buildKubeClient constructs a Kubernetes client from either an in-cluster
-// config or a provided kubeconfig path.
-// If kubeconfig is empty, falls back to the
+//
